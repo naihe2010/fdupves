@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: acnchess 0.0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-03-03 14:53+0800\n"
+"POT-Creation-Date: 2017-03-09 12:31+0800\n"
 "PO-Revision-Date: 2011-09-05 11:12+0800\n"
 "Last-Translator: Alf <naihe2010@126.com>\n"
 "Language-Team: Alf <naihe2010@126.com>\n"
@@ -33,29 +33,39 @@ msgid "Compare video screenshot hash value"
 msgstr "比较视频截图哈希值"
 
 #: /home/p/private/Nutstore/project/fdupves/src/video.c:50
-#: /home/p/private/Nutstore/project/fdupves/src/video.c:141
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:133
 #, c-format
 msgid "could not open: %s"
 msgstr "不能打开：%s"
 
 #: /home/p/private/Nutstore/project/fdupves/src/video.c:56
-#: /home/p/private/Nutstore/project/fdupves/src/video.c:147
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:139
 #, c-format
 msgid "could not find stream infomations: %s"
 msgstr "不能找到流信息：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/video.c:72
-#: /home/p/private/Nutstore/project/fdupves/src/video.c:164
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:64
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:147
 #, c-format
 msgid "could not find video stream: %s"
 msgstr "不能找到视频流：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/video.c:176
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:155
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:163
+#, c-format
+msgid "Memory error: %s"
+msgstr ""
+
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:173
 #, c-format
 msgid "Unsupported codec: %s"
 msgstr "不支持的格式：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/video.c:275
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:253
+msgid "Cannot receive frame from context"
+msgstr ""
+
+#: /home/p/private/Nutstore/project/fdupves/src/video.c:267
 msgid "Cannot initialize sws conversion context"
 msgstr "不能初使化转图形转化器"
 
