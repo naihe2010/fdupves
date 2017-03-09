@@ -151,6 +151,7 @@ find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
     {
       if (find->ptr[g]->len <= 0)
 	{
+          g_ptr_array_free (find->ptr[g], TRUE);
 	  continue;
 	}
 

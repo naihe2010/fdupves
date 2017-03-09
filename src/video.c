@@ -221,7 +221,7 @@ video_time_screenshot (const char *file, int time,
     {
       av_frame_free (&frame);
       av_frame_free (&frame_rgb);
-      avcodec_close (codec_ctx);
+      avcodec_free_context (&codec_ctx);
       avformat_close_input (&format_ctx);
       return -1;
     }
@@ -278,10 +278,10 @@ video_time_screenshot (const char *file, int time,
     }
 
   av_packet_free (&packet);
-  av_free (frame_rgb);
-  av_free (frame);
+  av_frame_free (&frame_rgb);
+  av_frame_free (&frame);
 
-  avcodec_close (codec_ctx);
+  avcodec_free_context (&codec_ctx);
 
   avformat_close_input (&format_ctx);
 
@@ -321,6 +321,7 @@ video_time_screenshot_file (const char *file, int time,
     {
       err = NULL;
       gdk_pixbuf_save (pix, out_file, "jpeg", &err, "quality", "100", NULL);
+      g_object_unref (pix);
       if (err)
 	{
 	  g_free (buf);
