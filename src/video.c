@@ -42,7 +42,7 @@ video_get_info (const char *file)
   video_info *info;
   AVFormatContext *fmt_ctx = NULL;
   AVStream *stream = NULL;
-  int i, s, ret;
+  int s, ret;
 
   ret = avformat_open_input (&fmt_ctx, file, NULL, NULL);
   if (ret != 0)
@@ -58,15 +58,7 @@ video_get_info (const char *file)
       return NULL;
     }
 
-  for (i=0, s = -1; i < (int) fmt_ctx->nb_streams; i++)
-    {
-      if (fmt_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
-        {
-	  s = i;
-	  break;
-        }
-    }
-
+  s = av_find_best_stream (fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (s == -1)
     {
       g_warning (_ ("could not find video stream: %s"), file);
@@ -74,7 +66,7 @@ video_get_info (const char *file)
       return NULL;
     }
 
-  stream = fmt_ctx->streams[i];
+  stream = fmt_ctx->streams[s];
 
   info = g_malloc0 (sizeof (video_info));
 
@@ -88,9 +80,9 @@ video_get_info (const char *file)
     {
       info->length = (double) (fmt_ctx->duration) / AV_TIME_BASE;
     }
-  info->size[0] = stream->codec->width;
-  info->size[1] = stream->codec->height;
-  info->format = avcodec_get_name (stream->codec->codec_id);
+  info->size[0] = stream->codecpar->width;
+  info->size[1] = stream->codecpar->height;
+  info->format = avcodec_get_name (stream->codecpar->codec_id);
 
   avformat_close_input (&fmt_ctx);
 
@@ -133,7 +125,7 @@ video_time_screenshot (const char *file, int time,
   AVFrame *frame,*frame_rgb;
   AVPacket *packet;
   struct SwsContext *img_convert_ctx = NULL;
-  int s, i, bytes, finished;
+  int s, ret, bytes;
   int64_t seek_target;
 
   if (avformat_open_input (&format_ctx, file, NULL, NULL) != 0)
@@ -149,16 +141,7 @@ video_time_screenshot (const char *file, int time,
       return -1;
     }
 
-  s = -1;
-  for (i=0; i < (int) format_ctx->nb_streams; i++)
-    {
-      if (format_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
-        {
-	  s = i;
-	  break;
-        }
-    }
-
+  s = av_find_best_stream (format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (s == -1)
     {
       g_warning (_ ("could not find video stream: %s"), file);
@@ -166,14 +149,30 @@ video_time_screenshot (const char *file, int time,
       return -1;
     }
 
-  codec_ctx = format_ctx->streams[s]->codec;
+  codec_ctx = avcodec_alloc_context3 (NULL);
+  if (codec_ctx == NULL)
+    {
+      g_warning (_ ("Memory error: %s"), file);
+      avformat_close_input (&format_ctx);
+      return -1;
+    }
 
+  ret = avcodec_parameters_to_context (codec_ctx, format_ctx->streams[s]->codecpar);
+  if (ret < 0)
+    {
+      g_warning (_ ("Memory error: %s"), file);
+      avcodec_free_context (&codec_ctx);
+      avformat_close_input (&format_ctx);
+      return -1;
+    }
+
+  av_codec_set_pkt_timebase (codec_ctx, format_ctx->streams[s]->time_base);
   codec = avcodec_find_decoder (codec_ctx->codec_id);
-
   if (codec == NULL)
     {
-      avformat_close_input (&format_ctx);
       g_warning (_ ("Unsupported codec: %s"), file);
+      avcodec_free_context (&codec_ctx);
+      avformat_close_input (&format_ctx);
       return -1;
     }
 
@@ -198,8 +197,9 @@ video_time_screenshot (const char *file, int time,
       avformat_close_input (&format_ctx);
       return -1;
     }
-
-  bytes = av_image_get_buffer_size (AV_PIX_FMT_RGB24, width, height, width);
+  bytes = av_image_fill_arrays (frame_rgb->data, frame_rgb->linesize,
+                                (uint8_t *) buffer,
+                                AV_PIX_FMT_RGB24, width, height, 1);
   if (buf_len < bytes)
     {
       av_frame_free (&frame);
@@ -208,9 +208,6 @@ video_time_screenshot (const char *file, int time,
       avformat_close_input (&format_ctx);
       return -1;
     }
-  av_image_fill_arrays (frame_rgb->data, frame_rgb->linesize,
-                        (uint8_t *) buffer,
-                        AV_PIX_FMT_RGB24, width, height, 0);
 
   seek_target = av_rescale (time,
 			    format_ctx->streams[s]->time_base.den,
@@ -234,34 +231,29 @@ video_time_screenshot (const char *file, int time,
       if (packet->stream_index != s)
 	{
           av_packet_unref (packet);
-	  continue;
+          continue;
 	}
 
-      avcodec_decode_video2 (codec_ctx, frame, &finished, packet);
-      if (!finished)
+      if (avcodec_send_packet (codec_ctx, packet) != 0)
         {
           av_packet_unref (packet);
-	  continue;
+          continue;
         }
 
-      if (packet->dts != AV_NOPTS_VALUE)
-	{
-	  if (packet->dts < seek_target)
-	    {
-              av_frame_unref (frame);
-              av_packet_unref (packet);
-	      continue;
-	    }
-	}
-      else if (packet->pts != AV_NOPTS_VALUE)
-	{
-	  if (packet->pts < seek_target)
-	    {
-              av_frame_unref (frame);
-              av_packet_unref (packet);
-	      continue;
-	    }
-	}
+      av_packet_unref (packet);
+
+      ret = avcodec_receive_frame (codec_ctx, frame);
+      if (ret == AVERROR(EAGAIN))
+        {
+          continue;
+        }
+
+      if (ret != 0)
+        {
+          g_warning (_ ("Cannot receive frame from context"));
+          bytes = -1;
+          break;
+        }
 
       img_convert_ctx =
 	sws_getCachedContext (img_convert_ctx,
@@ -278,7 +270,7 @@ video_time_screenshot (const char *file, int time,
         }
 
       sws_scale (img_convert_ctx,
-		 (const uint8_t * const *) frame->data, frame->linesize,
+                 (const uint8_t * const *) frame->data, frame->linesize,
 		 0, codec_ctx->height,
 		 frame_rgb->data, frame_rgb->linesize);
       sws_freeContext (img_convert_ctx);
