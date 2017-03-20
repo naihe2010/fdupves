@@ -29,25 +29,30 @@
 
 enum hash_type
   {
-    FDUPVES_HASH_HASH,
-    FDUPVES_HASH_PHASH,
+    FDUPVES_IMAGE_HASH,
+    FDUPVES_IMAGE_PHASH,
+    FDUPVES_AUDIO_HASH,
     FDUPVES_HASH_ALGS_CNT,
   };
 extern const char *hash_phrase[];
 
 typedef unsigned long long hash_t;
 
-hash_t file_hash (const char *);
+hash_t image_file_hash (const char *);
 
-hash_t buffer_hash (const char *, int);
+hash_t image_buffer_hash (const char *, int);
 
-hash_t video_time_hash (const char *, int);
+hash_t video_time_hash (const char *, float);
 
-hash_t file_phash (const char *);
+hash_t video_time_phash (const char *, float);
 
-hash_t buffer_phash (const char *, int);
+hash_t image_file_phash (const char *);
 
-hash_t video_time_phash (const char *, int);
+hash_t image_buffer_phash (const char *, float);
+
+hash_t audio_buffer_hash (const short *, int);
+
+hash_t audio_time_hash (const char *, float);
 
 int hash_cmp (hash_t, hash_t);
 

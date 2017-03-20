@@ -38,47 +38,10 @@ ini_t *
 ini_new ()
 {
   ini_t *ini;
-  size_t i;
 
-  const gchar *const isuffix[] =
-    {
-      ".bmp",
-      ".gif",
-      ".jpeg",
-      ".jpg",
-      ".jpe",
-      ".png",
-      ".pcx",
-      ".pnm",
-      ".tif",
-      ".tga",
-      ".xpm",
-      ".ico",
-      ".cur",
-      ".ani",
-    };
-  const gchar *const vsuffix[] =
-    {
-      ".avi",
-      ".mp4",
-      ".mpg",
-      ".rmvb",
-      ".rm",
-      ".mov",
-      ".mkv",
-      ".m4v",
-      ".mpg",
-      ".mpeg",
-      ".vob",
-      ".asf",
-      ".wmv",
-      ".3gp",
-      ".flv",
-      ".mod",
-      ".swf",
-      ".mts",
-      ".m2ts",
-    };
+  const gchar *const isuffix = "bmp,gif,jpeg,jpg,jpe,png,pcx,pnm,tif,tga,xpm,ico,cur,ani";
+  const gchar *const vsuffix = "avi,mp4,mpg,rmvb,rm,mov,mkv,m4v,mpg,mpeg,vob,asf,wmv,3gp,flv,mod,swf,mts,m2ts";
+  const gchar *const asuffix = "mp3,wma,wav,ogg,amr,m4a,mka,aac";
 
   ini = g_malloc0 (sizeof (ini_t));
   g_return_val_if_fail (ini, NULL);
@@ -93,22 +56,13 @@ ini_new ()
   ini->verbose = FALSE;
 
   ini->proc_image = FALSE;
-  for (i = 0; i < sizeof (isuffix) / sizeof (isuffix[0]); ++ i)
-    {
-      g_snprintf (ini->image_suffix[i],
-		  sizeof (ini->image_suffix[i]), "%s",
-		  isuffix[i]);
-    }
-  ini->image_suffix[i][0] = 0;
+  ini->image_suffix = g_strsplit (isuffix, ",", -1);
 
   ini->proc_video = TRUE;
-  for (i = 0; i < sizeof (vsuffix) / sizeof (vsuffix[0]); ++ i)
-    {
-      g_snprintf (ini->video_suffix[i],
-		  sizeof (ini->video_suffix[i]), "%s",
-		  vsuffix[i]);
-    }
-  ini->video_suffix[i][0] = 0;
+  ini->video_suffix = g_strsplit (vsuffix, ",", -1);
+
+  ini->proc_audio = TRUE;
+  ini->audio_suffix = g_strsplit (asuffix, ",", -1);
 
   ini->proc_other = FALSE;
 
@@ -116,8 +70,9 @@ ini_new ()
 
   ini->compare_count = 4;
 
-  ini->same_image_distance = 5;
-  ini->same_video_distance = 5;
+  ini->same_image_distance = 6;
+  ini->same_video_distance = 8;
+  ini->same_audio_distance = 2;
 
   ini->thumb_size[0] = 512;
   ini->thumb_size[1] = 384;
@@ -164,7 +119,8 @@ ini_new_with_file (const gchar *file)
 gboolean
 ini_load (ini_t *ini, const gchar *file)
 {
-  gchar *path;
+  gchar *path, *tmpstr;
+  gint level;
   GError *err;
 
   path = fd_realpath (file);
@@ -187,6 +143,13 @@ ini_load (ini_t *ini, const gchar *file)
 						"proc_image",
 						NULL);
     }
+  tmpstr = g_key_file_get_string (ini->keyfile, "_", "image_ext", NULL);
+  if (tmpstr != NULL)
+    {
+      g_strfreev (ini->image_suffix);
+      ini->image_suffix = g_strsplit (tmpstr, ",", 0);
+    }
+
   if (g_key_file_has_key (ini->keyfile, "_", "proc_video", NULL))
     {
       ini->proc_video = g_key_file_get_boolean (ini->keyfile,
@@ -194,7 +157,59 @@ ini_load (ini_t *ini, const gchar *file)
 						"proc_video",
 						NULL);
     }
+  tmpstr = g_key_file_get_string (ini->keyfile, "_", "video_ext", NULL);
+  if (tmpstr != NULL)
+    {
+      g_strfreev (ini->video_suffix);
+      ini->video_suffix = g_strsplit (tmpstr, ",", 0);
+    }
 
+  if (g_key_file_has_key (ini->keyfile, "_", "proc_audio", NULL))
+    {
+      ini->proc_audio = g_key_file_get_boolean (ini->keyfile,
+						"_",
+						"proc_audio",
+						NULL);
+    }
+  tmpstr = g_key_file_get_string (ini->keyfile, "_", "audio_ext", NULL);
+  if (tmpstr != NULL)
+    {
+      g_strfreev (ini->audio_suffix);
+      ini->audio_suffix = g_strsplit (tmpstr, ",", 0);
+    }
+
+  level = g_key_file_get_integer (ini->keyfile, "_", "same_image_rate", &err);
+  if (err)
+    {
+      g_warning ("configuration file: %s value error: %s, set as default.", file, err->message);
+      g_error_free (err);
+    }
+  else
+    {
+      ini->same_image_distance = SAME_RATE_MAX - level;
+    }
+
+  level = g_key_file_get_integer (ini->keyfile, "_", "same_video_rate", &err);
+  if (err)
+    {
+      g_warning ("configuration file: %s value error: %s, set as default.", file, err->message);
+      g_error_free (err);
+    }
+  else
+    {
+      ini->same_video_distance = SAME_RATE_MAX - level;
+    }
+  level = g_key_file_get_integer (ini->keyfile, "_", "same_audio_rate", &err);
+  if (err)
+    {
+      g_warning ("configuration file: %s value error: %s, set as default.", file, err->message);
+      g_error_free (err);
+    }
+  else
+    {
+      ini->same_audio_distance = SAME_RATE_MAX - level;
+    }
+  
   if (g_key_file_has_key (ini->keyfile, "_", "compare_area", NULL))
     {
       ini->compare_area = g_key_file_get_integer (ini->keyfile,
@@ -217,14 +232,43 @@ ini_load (ini_t *ini, const gchar *file)
 gboolean
 ini_save (ini_t *ini, const gchar *file)
 {
-  gchar *data, *path;
+  gchar *data, *path, *tmpstr;
   gsize len;
 
   path = fd_realpath (file);
   g_return_val_if_fail (path, FALSE);
 
   g_key_file_set_boolean (ini->keyfile, "_", "proc_image", ini->proc_image);
+  tmpstr = g_strjoinv (",", ini->image_suffix);
+  if (tmpstr)
+    {
+      g_key_file_set_string (ini->keyfile, "_", "image_ext", tmpstr);
+      g_free (tmpstr);
+    }
+
   g_key_file_set_boolean (ini->keyfile, "_", "proc_video", ini->proc_video);
+  tmpstr = g_strjoinv (",", ini->video_suffix);
+  if (tmpstr)
+    {
+      g_key_file_set_string (ini->keyfile, "_", "video_ext", tmpstr);
+      g_free (tmpstr);
+    }
+
+  g_key_file_set_boolean (ini->keyfile, "_", "proc_audio", ini->proc_audio);
+  tmpstr = g_strjoinv (",", ini->audio_suffix);
+  if (tmpstr)
+    {
+      g_key_file_set_string (ini->keyfile, "_", "audio_ext", tmpstr);
+      g_free (tmpstr);
+    }
+
+  g_key_file_set_integer (ini->keyfile, "_", "same_image_rate",
+                          SAME_RATE_MAX - ini->same_image_distance);
+  g_key_file_set_integer (ini->keyfile, "_", "same_video_rate",
+                          SAME_RATE_MAX - ini->same_video_distance);
+  g_key_file_set_integer (ini->keyfile, "_", "same_audio_rate",
+                          SAME_RATE_MAX - ini->same_audio_distance);
+
   g_key_file_set_integer (ini->keyfile, "_", "compare_area", ini->compare_area);
   g_key_file_set_integer (ini->keyfile, "_", "compare_count", ini->compare_count);
 

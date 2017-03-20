@@ -25,18 +25,21 @@
  */
 
 #include "hash.h"
-#include "video.h"
 #include "image.h"
+#include "video.h"
+#include "audio.h"
 #include "ini.h"
 #include "cache.h"
+#include "util.h"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 
 const char *hash_phrase[] =
   {
-    "hash",
-    "phash",
+    "image_hash",
+    "image_phash",
+    "audio_hash",
   };
 
 static hash_t pixbuf_hash (GdkPixbuf *);
@@ -44,7 +47,7 @@ static hash_t pixbuf_hash (GdkPixbuf *);
 #define FDUPVES_HASH_LEN 8
 
 hash_t
-file_hash (const char *file)
+image_file_hash (const char *file)
 {
   GdkPixbuf *buf;
   hash_t h;
@@ -52,7 +55,7 @@ file_hash (const char *file)
 
   if (g_cache)
     {
-      if (cache_get (g_cache, file, 0, FDUPVES_HASH_HASH, &h))
+      if (cache_get (g_cache, file, 0, FDUPVES_IMAGE_HASH, &h))
 	{
 	  return h;
 	}
@@ -76,7 +79,7 @@ file_hash (const char *file)
     {
       if (h)
 	{
-	  cache_set (g_cache, file, 0, FDUPVES_HASH_HASH, h);
+	  cache_set (g_cache, file, 0, FDUPVES_IMAGE_HASH, h);
 	}
     }
 
@@ -84,7 +87,7 @@ file_hash (const char *file)
 }
 
 hash_t
-buffer_hash (const char *buffer, int size)
+image_buffer_hash (const char *buffer, int size)
 {
   GdkPixbuf *buf;
   GError *err;
@@ -210,18 +213,15 @@ hash_cmp (hash_t a, hash_t b)
 }
 
 hash_t
-video_time_hash (const char *file, int time)
+video_time_hash (const char *file, float offset)
 {
   hash_t h;
   gchar *buffer;
   gsize len;
-#ifdef _DEBUG
-  gchar *basename, outfile[4096];
-#endif
 
   if (g_cache)
     {
-      if (cache_get (g_cache, file, time, FDUPVES_HASH_HASH, &h))
+      if (cache_get (g_cache, file, offset, FDUPVES_IMAGE_HASH, &h))
 	{
 	  return h;
 	}
@@ -231,31 +231,113 @@ video_time_hash (const char *file, int time)
   buffer = g_malloc (len);
   g_return_val_if_fail (buffer, 0);
 
-  video_time_screenshot (file, time,
+  video_time_screenshot (file, offset,
 			 FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
 			 buffer, len);
-#ifdef _DEBUG
-  basename = g_path_get_basename (file);
-  g_snprintf (outfile, sizeof outfile, "%s/%s-%d.png",
-	      g_get_tmp_dir (),
-	      basename, time);
-  g_free (basename);
-  video_time_screenshot_file (file, time,
-			      FDUPVES_HASH_LEN * 100,
-			      FDUPVES_HASH_LEN * 100,
-			      outfile);
-#endif
 
-  h = buffer_hash (buffer, len);
+  h = image_buffer_hash (buffer, len);
   g_free (buffer);
 
   if (g_cache)
     {
       if (h)
 	{
-	  cache_set (g_cache, file, time, FDUPVES_HASH_HASH, h);
+	  cache_set (g_cache, file, offset, FDUPVES_IMAGE_HASH, h);
 	}
     }
 
   return h;
+}
+
+hash_t
+audio_time_hash (const char *file, float offset)
+{
+  hash_t h;
+  short buffer[AUDIO_HASH_COUNT];
+#ifdef _DEBUG
+  gchar *basename, outfile[PATH_MAX];
+#endif
+
+  if (g_cache)
+    {
+      if (cache_get (g_cache, file, offset, FDUPVES_AUDIO_HASH, &h))
+	{
+	  return h;
+	}
+    }
+
+  if (audio_time_screenshot (file, offset,
+			     AUDIO_HASH_COUNT,
+                             buffer, sizeof (buffer)) <= 0)
+    {
+      g_warning (_ ("get audio screenshot failed: %s"), file);
+      return 0;
+    }
+  
+#ifdef _DEBUG
+  basename = g_path_get_basename (file);
+  g_snprintf (outfile, sizeof outfile, "%s/%s-%f.raw",
+	      g_get_tmp_dir (),
+	      basename, offset);
+  g_free (basename);
+  audio_time_screenshot_file (file, offset,
+                              AUDIO_HASH_COUNT,
+			      outfile);
+#endif
+
+  h = audio_buffer_hash (buffer, sizeof buffer);
+
+  if (g_cache)
+    {
+      if (h)
+	{
+	  cache_set (g_cache, file, offset, FDUPVES_AUDIO_HASH, h);
+	}
+    }
+
+  return h;
+}
+
+hash_t
+audio_buffer_hash (const short *buffer, int length)
+{
+  unsigned char img_buf[AUDIO_HASH_LENGTH];
+  double sum, avg;
+  short value;
+  hash_t hash;
+  size_t i, j;
+
+  g_assert ((size_t) length <= AUDIO_HASH_COUNT * sizeof (short));
+
+  for (i = 0; i < AUDIO_HASH_LENGTH; ++ i)
+    {
+      for (sum = 0.0, j = 0; j < AUDIO_HASH_FRAME; ++ j)
+        {
+          value = buffer[i * AUDIO_HASH_OVERLAP + j];
+          if (value < 0)
+            {
+              value = 0 - value;
+            }
+          sum += value;
+        }
+      avg = sum / AUDIO_HASH_FRAME;
+      avg = avg * UCHAR_MAX / SHRT_MAX;
+      img_buf[i] = avg;
+    }
+
+  for (sum = 0, i = 0; i < AUDIO_HASH_LENGTH; ++ i)
+    {
+      sum += img_buf[i];
+    }
+  avg = sum / AUDIO_HASH_LENGTH;
+
+  for (hash = 0, i = 0; i < AUDIO_HASH_LENGTH; ++ i)
+    {
+      if (img_buf[i] >= avg)
+        {
+          hash |= ((hash_t) 1 << i);
+        }
+    }
+
+  return hash;
 }

@@ -7,6 +7,7 @@ SET (HEADERS
   hash.h
   find.h
   video.h
+  audio.h
   image.h
   cache.h
   )
@@ -19,6 +20,7 @@ SET (SOURCES
   phash.c
   find.c
   video.c
+  audio.c
   image.c
   cache.c
   main.c
@@ -72,6 +74,7 @@ IF (WIN32)
     ${FFMPEG_DIR}/bin/avcodec-54.dll
     ${FFMPEG_DIR}/bin/avutil-52.dll
     ${FFMPEG_DIR}/bin/swscale-2.dll
+    ${FFMPEG_DIR}/bin/swresample-2.dll
     ${FFMPEG_DIR}/bin/ffplay.exe
     )
 

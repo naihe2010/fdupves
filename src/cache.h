@@ -41,9 +41,9 @@ void cache_free (cache_t *);
 
 gboolean cache_has (cache_t *, const gchar *, int, int);
 
-gboolean cache_get (cache_t *, const gchar *, int, int, hash_t *);
+gboolean cache_get (cache_t *, const gchar *, float, int, hash_t *);
 
-gboolean cache_set (cache_t *, const gchar *, int, int, hash_t);
+gboolean cache_set (cache_t *, const gchar *, float, int, hash_t);
 
 gboolean cache_remove (cache_t *, const gchar *);
 

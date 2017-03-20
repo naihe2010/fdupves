@@ -28,6 +28,7 @@
 #include "util.h"
 #include "ini.h"
 #include "video.h"
+#include "audio.h"
 #include "image.h"
 #include "find.h"
 #include "gui.h"
@@ -62,7 +63,10 @@ typedef struct
   gchar *name;
   gchar *dir;
 
-  /* FD_IMAGE FD_VIDEO */
+  /*
+    0, FD_IMAGE
+    1, FD_VIDEO
+    2, FD_AUDIO */
   gint type;
 
   /* format desc */
@@ -103,8 +107,10 @@ typedef struct
 
   GPtrArray *images;
   GPtrArray *videos;
+  GPtrArray *audios;
   GSList *same_images;
   GSList *same_videos;
+  GSList *same_audios;
   GSList *same_list;
 
   GtkWidget *logtree;
@@ -395,6 +401,13 @@ gui_vbutcb (GtkWidget *but, gui_t *gui)
 }
 
 static void
+gui_abutcb (GtkWidget *but, gui_t *gui)
+{
+  g_ini->proc_audio = gtk_toggle_button_get_active
+    (GTK_TOGGLE_BUTTON (but));
+}
+
+static void
 gui_compareareacb(GtkWidget *combo, gui_t *gui)
 {
   g_ini->compare_area = gtk_combo_box_get_active
@@ -453,6 +466,11 @@ mainframe_new (gui_t *gui)
   gtk_box_pack_start (GTK_BOX (typebox), typevbut, FALSE, FALSE, 2);
   gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (typevbut), g_ini->proc_video);
   g_signal_connect (G_OBJECT (typevbut), "toggled", G_CALLBACK (gui_vbutcb), gui);
+
+  typevbut = gtk_check_button_new_with_label (_ ("Audio"));
+  gtk_box_pack_start (GTK_BOX (typebox), typevbut, FALSE, FALSE, 2);
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (typevbut), g_ini->proc_audio);
+  g_signal_connect (G_OBJECT (typevbut), "toggled", G_CALLBACK (gui_abutcb), gui);
 
   typebox = gtk_hbox_new (TRUE, 2);
   gtk_box_pack_end (GTK_BOX (vbox), typebox, FALSE, FALSE, 2);
@@ -664,7 +682,7 @@ gui_find_cb (GtkWidget *wid, gui_t *gui)
 static void
 gui_find_thread (gui_t *gui)
 {
-  int fimage, fvideo;
+  int fimage, fvideo, faudio;
 
   /* disable the add/find tool time */
   gdk_threads_enter ();
@@ -685,6 +703,7 @@ gui_find_thread (gui_t *gui)
 
   gui->images = g_ptr_array_new_with_free_func (g_free);
   gui->videos = g_ptr_array_new_with_free_func (g_free);
+  gui->audios = g_ptr_array_new_with_free_func (g_free);
 
   gtk_tree_model_foreach (GTK_TREE_MODEL (gui->dirliststore),
 			  (GtkTreeModelForeachFunc) dir_find_item,
@@ -711,8 +730,21 @@ gui_find_thread (gui_t *gui)
       g_message (_ ("find %d groups same videos"), fvideo);
     }
 
+  faudio = 0;
+  if (g_ini->proc_audio && gui->audios->len > 0)
+    {
+      g_message (_ ("find %d audios to process"), gui->audios->len);
+
+      find_audios (gui->audios, (find_step_cb) gui_find_step_cb, gui);
+      faudio = g_slist_length (gui->same_list);
+      faudio -= fimage;
+      faudio -= fvideo;
+      g_message (_ ("find %d groups same audios"), faudio);
+    }
+
   g_ptr_array_free (gui->images, TRUE);
   g_ptr_array_free (gui->videos, TRUE);
+  g_ptr_array_free (gui->audios, TRUE);
 
   gdk_threads_enter ();
   gtk_tree_view_expand_all (GTK_TREE_VIEW (gui->restree));
@@ -730,6 +762,131 @@ gui_find_thread (gui_t *gui)
 static void
 gui_pref_cb (GtkWidget *wid, gui_t *gui)
 {
+  GtkWidget *dialog, *vbox, *frame, *label, *hbox;
+  GtkWidget *i_exts, *v_exts, *a_exts;
+  GtkWidget *i_level, *v_level, *a_level;
+  gchar *tmpstr;
+  const gchar *entrystr;
+  gint result, level;
+
+  dialog = gtk_dialog_new_with_buttons (_ ("Preference"),
+                                        NULL,
+                                        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                        GTK_STOCK_OK,
+                                        GTK_RESPONSE_ACCEPT,
+                                        GTK_STOCK_CANCEL,
+                                        GTK_RESPONSE_REJECT,
+                                        NULL);
+
+  frame = gtk_frame_new ("");
+  gtk_box_pack_start (GTK_BOX (GTK_DIALOG (dialog)->vbox), frame, TRUE, TRUE, 20);
+
+  vbox = gtk_vbox_new (TRUE, TRUE);
+  gtk_container_add (GTK_CONTAINER (frame), vbox);
+
+  /* i_exts */
+  hbox = gtk_hbox_new (FALSE, FALSE);
+  label = gtk_label_new (_ ("Image Type"));
+  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 2);
+  i_exts = gtk_entry_new ();
+  tmpstr = g_strjoinv (",", g_ini->image_suffix);
+  gtk_entry_set_text (GTK_ENTRY (i_exts), tmpstr);
+  g_free (tmpstr);
+  gtk_box_pack_end (GTK_BOX (hbox), i_exts, TRUE, TRUE, 5);
+  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
+  /* v_exts */
+  hbox = gtk_hbox_new (FALSE, FALSE);
+  label = gtk_label_new (_ ("Video Type"));
+  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 2);
+  v_exts = gtk_entry_new ();
+  tmpstr = g_strjoinv (",", g_ini->video_suffix);
+  gtk_entry_set_text (GTK_ENTRY (v_exts), tmpstr);
+  g_free (tmpstr);
+  gtk_box_pack_end (GTK_BOX (hbox), v_exts, TRUE, TRUE, 5);
+  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
+  /* a_exts */
+  hbox = gtk_hbox_new (FALSE, FALSE);
+  label = gtk_label_new (_ ("Audio Type"));
+  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 2);
+  a_exts = gtk_entry_new ();
+  tmpstr = g_strjoinv (",", g_ini->audio_suffix);
+  gtk_entry_set_text (GTK_ENTRY (a_exts), tmpstr);
+  g_free (tmpstr);
+  gtk_box_pack_end (GTK_BOX (hbox), a_exts, TRUE, TRUE, 5);
+  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
+  /* i_level */
+  hbox = gtk_hbox_new (FALSE, FALSE);
+  label = gtk_label_new (_ ("Image Same Rate"));
+  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 2);
+  i_level = gtk_spin_button_new_with_range (1, 10, 1);
+  gtk_spin_button_set_numeric (GTK_SPIN_BUTTON (i_level), TRUE);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (i_level), 10 - g_ini->same_image_distance);
+  gtk_box_pack_end (GTK_BOX (hbox), i_level, TRUE, TRUE, 5);
+  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
+  /* v_level */
+  hbox = gtk_hbox_new (FALSE, FALSE);
+  label = gtk_label_new (_ ("Video Same Rate"));
+  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 2);
+  v_level = gtk_spin_button_new_with_range (1, 10, 1);
+  gtk_spin_button_set_numeric (GTK_SPIN_BUTTON (v_level), TRUE);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (v_level), 10 - g_ini->same_video_distance);
+  gtk_box_pack_end (GTK_BOX (hbox), v_level, TRUE, TRUE, 5);
+  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
+  /* a_level */
+  hbox = gtk_hbox_new (FALSE, FALSE);
+  label = gtk_label_new (_ ("Audio Same Rate"));
+  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 2);
+  a_level = gtk_spin_button_new_with_range (1, 10, 1);
+  gtk_spin_button_set_numeric (GTK_SPIN_BUTTON (a_level), TRUE);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (a_level), 10 - g_ini->same_audio_distance);
+  gtk_box_pack_end (GTK_BOX (hbox), a_level, TRUE, TRUE, 5);
+  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
+  gtk_widget_show_all (GTK_DIALOG (dialog)->vbox);
+
+  result = gtk_dialog_run (GTK_DIALOG (dialog));
+  if (result != GTK_RESPONSE_ACCEPT)
+    {
+      gtk_widget_destroy (dialog);
+      return;
+    }
+
+  entrystr = gtk_entry_get_text (GTK_ENTRY (i_exts));
+  if (entrystr != NULL)
+    {
+      g_strfreev (g_ini->image_suffix);
+      g_ini->image_suffix = g_strsplit (entrystr, ",", 0);
+    }
+
+  entrystr = gtk_entry_get_text (GTK_ENTRY (v_exts));
+  if (entrystr != NULL)
+    {
+      g_strfreev (g_ini->video_suffix);
+      g_ini->video_suffix = g_strsplit (entrystr, ",", 0);
+    }
+
+  entrystr = gtk_entry_get_text (GTK_ENTRY (a_exts));
+  if (entrystr != NULL)
+    {
+      g_strfreev (g_ini->audio_suffix);
+      g_ini->audio_suffix = g_strsplit (entrystr, ",", 0);
+    }
+
+  level = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (i_level));
+  g_ini->same_image_distance = 10 - level;
+  level = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (v_level));
+  g_ini->same_video_distance = 10 - level;
+  level = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (a_level));
+  g_ini->same_audio_distance = 10 - level;
+  
+  ini_save (g_ini, FD_USR_CONF_FILE);
+  
+  gtk_widget_destroy (dialog);
 }
 
 static void
@@ -849,36 +1006,36 @@ static void
 gui_list_file (gui_t *gui, const gchar *path)
 {
   gchar *p;
+  int found;
 
-  if (is_image (path))
+  found = 0;
+  if (g_ini->proc_image && is_image (path))
     {
-      if (g_ini->proc_image)
-	{
-	  p = g_strdup (path);
-	  g_ptr_array_add (gui->images, p);
-	  return;
-	}
+      p = g_strdup (path);
+      g_ptr_array_add (gui->images, p);
+      found = 1;
     }
 
-  else if (is_video (path))
+  if (g_ini->proc_video && is_video (path))
     {
-      if (g_ini->proc_video)
-	{
-	  p = g_strdup (path);
-	  g_ptr_array_add (gui->videos, p);
-	  return;
-	}
+      p = g_strdup (path);
+      g_ptr_array_add (gui->videos, p);
+      found = 1;
     }
 
-  else
+  if (g_ini->proc_audio && is_audio (path))
     {
+      p = g_strdup (path);
+      g_ptr_array_add (gui->audios, p);
+      found = 1;
+    }
+
+  if (found == 0)
+    {
+      g_debug ("%s is not image/video/audio, skipped", path);
       if (g_ini->proc_other)
-	{
-	}
-      else
-	{
-	  g_debug ("%s is not image/video, skipped", path);
-	}
+        {
+        }
     }
 }
 
@@ -1595,6 +1752,53 @@ diff_add_video (diff_dialog *dia, const file_node *afn, const file_node *bfn)
 }
 
 static void
+diff_add_audio (diff_dialog *dia, const file_node *afn, const file_node *bfn)
+{
+  GtkWidget *hbox, *hbox2;
+  GtkWidget *entry, *label, *headortail;
+  gchar count[10];
+
+  dia->afn = afn;
+  dia->bfn = bfn;
+
+  /* screenshot */
+  dia->container = gtk_hbox_new (TRUE, 2);
+  gtk_box_pack_start (GTK_BOX (dia->content), dia->container, TRUE, TRUE, 0);
+
+  /* head or tail */
+  hbox = gtk_hbox_new (TRUE, 2);
+  gtk_box_pack_end (GTK_BOX (dia->content), hbox, FALSE, FALSE, 5);
+
+  headortail = gtk_toggle_button_new_with_label (_ ("From Tail"));
+  gtk_box_pack_start (GTK_BOX (hbox), headortail, FALSE, FALSE, 2);
+  g_signal_connect (G_OBJECT (headortail), "toggled",
+		    G_CALLBACK (diffdia_onheadtail), dia);
+
+  hbox2 = gtk_hbox_new (FALSE, 2);
+  gtk_box_pack_start (GTK_BOX (hbox), hbox2, FALSE, FALSE, 2);
+  label = gtk_label_new (_ ("Compare Count"));
+  gtk_box_pack_start (GTK_BOX (hbox2), label, FALSE, FALSE, 2);
+  entry = gtk_entry_new ();
+  gtk_box_pack_end (GTK_BOX (hbox2), entry, FALSE, FALSE, 2);
+  g_signal_connect (G_OBJECT (entry), "changed",
+		    G_CALLBACK (diffdia_onseekchanged), dia);
+
+  dia->butprev = gtk_button_new_with_label (_ ("Previous"));
+  gtk_box_pack_start (GTK_BOX (hbox), dia->butprev, FALSE, FALSE, 2);
+  g_signal_connect (G_OBJECT (dia->butprev), "clicked",
+		    G_CALLBACK (diffdia_onprev), dia);
+  dia->butnext = gtk_button_new_with_label (_ ("Next"));
+  gtk_box_pack_start (GTK_BOX (hbox), dia->butnext, FALSE, FALSE, 2);
+  g_signal_connect (G_OBJECT (dia->butnext), "clicked",
+		    G_CALLBACK (diffdia_onnext), dia);
+
+  g_snprintf (count, sizeof count, "%d", g_ini->compare_count);
+  gtk_entry_set_text (GTK_ENTRY (entry), count);
+  dia->index = 1;
+  diffdia_refresh_video_pic (dia);
+}
+
+static void
 restree_diff (GtkMenuItem *item, gui_t *gui)
 {
   diff_dialog_new (gui, gui->resselfiles[0], gui->resselfiles[1]);
@@ -1630,6 +1834,10 @@ diff_dialog_new (gui_t *gui, const file_node *afn, const file_node *bfn)
   else if (afn->type == FD_VIDEO && bfn->type == FD_VIDEO)
     {
       diff_add_video (diffdia, afn, bfn);
+    }
+  else if (afn->type == FD_AUDIO && bfn->type == FD_AUDIO)
+    {
+      diff_add_audio (diffdia, afn, bfn);
     }
   else
     {
@@ -1744,12 +1952,23 @@ gui_append_same_slist (gui_t *gui, GSList *slist,
   gboolean afind, bfind;
   GtkTreeIter itr[1], itrc[1];
   GtkTreePath *path;
+  int filetype;
+
+  filetype = FD_IMAGE;
+  if (type == FD_SAME_VIDEO_HEAD || type == FD_SAME_VIDEO_TAIL)
+    {
+      filetype = FD_VIDEO;
+    }
+  else if (type == FD_SAME_AUDIO_HEAD || type == FD_SAME_AUDIO_TAIL)
+    {
+      filetype = FD_AUDIO;
+    }
 
   for (cur = slist; cur; cur = g_slist_next (cur))
     {
       node = cur->data;
 
-      if (node->type != type)
+      if (node->type != filetype)
 	{
 	  continue;
 	}
@@ -1777,8 +1996,7 @@ gui_append_same_slist (gui_t *gui, GSList *slist,
 	{
 	  fn = file_node_new (node,
 			      bfile,
-			      type == FD_SAME_IMAGE ?
-			      FD_IMAGE : FD_VIDEO);
+			      filetype);
 
 	  gdk_threads_enter ();
 	  if (node->show)
@@ -1797,8 +2015,7 @@ gui_append_same_slist (gui_t *gui, GSList *slist,
 	{
 	  fn = file_node_new (node,
 			      afile,
-			      type == FD_SAME_IMAGE?
-			      FD_IMAGE : FD_VIDEO);
+			      filetype);
 
 	  gdk_threads_enter ();
 	  if (node->show)
@@ -1818,15 +2035,13 @@ gui_append_same_slist (gui_t *gui, GSList *slist,
   node = g_malloc0 (sizeof (same_node));
   g_return_val_if_fail (node, slist);
 
-  node->type = type;
+  node->type = filetype;
   fn = file_node_new (node,
 		      afile,
-		      type == FD_SAME_IMAGE ?
-		      FD_IMAGE : FD_VIDEO);
+		      filetype);
   fn2 = file_node_new (node,
 		       bfile,
-		       type == FD_SAME_IMAGE ?
-		       FD_IMAGE : FD_VIDEO);
+		       filetype);
 
   gdk_threads_enter ();
   gtk_tree_store_append (gui->restreestore, itr, NULL);
@@ -1971,6 +2186,18 @@ file_node_new (same_node *node, const gchar *path, gint type)
 	  fn->length = info->length;
 	  fn->format = g_strdup (info->format);
 	  video_info_free (info);
+	}
+    }
+  else if (type == FD_AUDIO)
+    {
+      audio_info *info;
+
+      info = audio_get_info (path);
+      if (info)
+	{
+	  fn->length = info->length;
+	  fn->format = g_strdup (info->format);
+	  audio_info_free (info);
 	}
     }
 

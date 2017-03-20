@@ -59,7 +59,7 @@ video_get_info (const char *file)
     }
 
   s = av_find_best_stream (fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-  if (s == -1)
+  if (s < 0)
     {
       g_warning (_ ("could not find video stream: %s"), file);
       avformat_close_input (&fmt_ctx);
@@ -142,7 +142,7 @@ video_time_screenshot (const char *file, int time,
     }
 
   s = av_find_best_stream (format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-  if (s == -1)
+  if (s < 0)
     {
       g_warning (_ ("could not find video stream: %s"), file);
       avformat_close_input (&format_ctx);

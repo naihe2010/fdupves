@@ -30,15 +30,26 @@
 
 #include <glib.h>
 
+#ifndef SAME_RATE_MIN
+#define SAME_RATE_MIN 0
+#endif
+
+#ifndef SAME_RATE_MAX
+#define SAME_RATE_MAX 10
+#endif
+
 typedef struct
 {
   gboolean verbose;
 
   gboolean proc_image;
-  gchar image_suffix[0x100][6];
+  gchar **image_suffix;
 
   gboolean proc_video;
-  gchar video_suffix[0x100][6];
+  gchar **video_suffix;
+
+  gboolean proc_audio;
+  gchar **audio_suffix;
 
   gint compare_area;
 
@@ -46,8 +57,9 @@ typedef struct
 
   gint compare_count;
 
-  gint same_video_distance;
   gint same_image_distance;
+  gint same_video_distance;
+  gint same_audio_distance;
 
   gint thumb_size[2];
 

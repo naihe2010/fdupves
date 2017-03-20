@@ -104,7 +104,8 @@ is_image (const char *path)
       return 0;
     }
 
-  for (i = 0; g_ini->image_suffix[i][0]; ++ i)
+  p += 1;
+  for (i = 0; g_ini->image_suffix[i]; ++ i)
     {
       s = g_ini->image_suffix[i];
       if (g_ascii_strcasecmp (p, s) == 0)
@@ -128,7 +129,42 @@ is_video (const gchar *path)
       return 0;
     }
 
-  for (i = 0; g_ini->video_suffix[i][0]; ++ i)
+  p += 1;
+  for (i = 0; g_ini->video_suffix[i]; ++ i)
+    {
+      s = g_ini->video_suffix[i];
+      if (g_ascii_strcasecmp (p, s) == 0)
+	{
+	  return 1;
+	}
+    }
+
+  return 0;
+}
+
+int
+is_audio (const gchar *path)
+{
+  int i;
+  const char *p, *s;
+
+  p = strrchr (path, '.');
+  if (p == NULL)
+    {
+      return 0;
+    }
+
+  p += 1;
+  for (i = 0; g_ini->audio_suffix[i]; ++ i)
+    {
+      s = g_ini->audio_suffix[i];
+      if (g_ascii_strcasecmp (p, s) == 0)
+	{
+	  return 1;
+	}
+    }
+
+  for (i = 0; g_ini->video_suffix[i]; ++ i)
     {
       s = g_ini->video_suffix[i];
       if (g_ascii_strcasecmp (p, s) == 0)

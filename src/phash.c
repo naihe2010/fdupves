@@ -45,7 +45,7 @@ static void matrix_mul (const gdouble *, const gdouble *,
 			gdouble *);
 
 hash_t
-file_phash (const char *file)
+image_file_phash (const char *file)
 {
   GdkPixbuf *buf;
   hash_t h;
@@ -53,7 +53,7 @@ file_phash (const char *file)
 
   if (g_cache)
     {
-      if (cache_get (g_cache, file, 0, FDUPVES_HASH_PHASH, &h))
+      if (cache_get (g_cache, file, 0, FDUPVES_IMAGE_PHASH, &h))
 	{
 	  return h;
 	}
@@ -79,7 +79,7 @@ file_phash (const char *file)
     {
       if (h)
 	{
-	  cache_set (g_cache, file, 0, FDUPVES_HASH_PHASH, h);
+	  cache_set (g_cache, file, 0, FDUPVES_IMAGE_PHASH, h);
 	}
     }
 
@@ -117,7 +117,7 @@ buffer_phash (const char *buffer, int size)
 }
 
 hash_t
-video_time_phash (const char *file, int time)
+video_time_phash (const char *file, float offset)
 {
   hash_t h;
   gchar buffer[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN * 3];
@@ -127,23 +127,23 @@ video_time_phash (const char *file, int time)
 
   if (g_cache)
     {
-      if (cache_get (g_cache, file, time, FDUPVES_HASH_PHASH, &h))
+      if (cache_get (g_cache, file, offset, FDUPVES_IMAGE_PHASH, &h))
 	{
 	  return h;
 	}
     }
 
-  video_time_screenshot (file, time,
+  video_time_screenshot (file, offset,
 			 FDUPVES_PHASH_LEN,
 			 FDUPVES_PHASH_LEN,
 			 buffer, sizeof buffer);
 #ifdef _DEBUG
   basename = g_path_get_basename (file);
-  g_snprintf (outfile, sizeof outfile, "%s/%s-%d.png",
+  g_snprintf (outfile, sizeof outfile, "%s/%s-%f.png",
 	      g_get_tmp_dir (),
-	      basename, time);
+	      basename, offset);
   g_free (basename);
-  video_time_screenshot_file (file, time,
+  video_time_screenshot_file (file, offset,
 			      FDUPVES_PHASH_LEN * 100,
 			      FDUPVES_PHASH_LEN * 100,
 			      outfile);
@@ -155,7 +155,7 @@ video_time_phash (const char *file, int time)
     {
       if (h)
 	{
-	  cache_set (g_cache, file, time, FDUPVES_HASH_PHASH, h);
+	  cache_set (g_cache, file, offset, FDUPVES_IMAGE_PHASH, h);
 	}
     }
 

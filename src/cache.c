@@ -53,13 +53,13 @@ cache_t *g_cache;
 #endif
 
 static inline void
-join_key (char *key, size_t len, const char *file, int off, int alg)
+join_key (char *key, size_t len, const char *file, float off, int alg)
 {
-  g_snprintf (key, len, "%s"FDUPVES_KEY_SEPS"%05d"FDUPVES_KEY_SEPS"%s", file, off, hash_phrase[alg]);
+  g_snprintf (key, len, "%s"FDUPVES_KEY_SEPS"%.2f"FDUPVES_KEY_SEPS"%s", file, off, hash_phrase[alg]);
 }
 
 static inline void
-split_key (const char *key, char *file, int *off, char *alg)
+split_key (const char *key, char *file, float *off, char *alg)
 {
   char buf[PATH_MAX], *p, *e;
 
@@ -94,7 +94,7 @@ struct cache_s
 
 struct cache_value_node
 {
-  int time;
+  float offset;
   int alg;
   hash_t hash;
 };
@@ -107,12 +107,12 @@ struct cache_value
 };
 
 static struct cache_value * cache_value_new (cache_t *, const char *);
-static gboolean cache_value_set (struct cache_value *, int, int, hash_t);
-static gboolean cache_value_get (struct cache_value *, int, int, hash_t *);
+static gboolean cache_value_set (struct cache_value *, float, int, hash_t);
+static gboolean cache_value_get (struct cache_value *, float, int, hash_t *);
 static void cache_value_free (struct cache_value *);
 
 static gboolean write_hash (guint, struct cache_value *, FILE *);
-static gboolean read_hash (char *, int *, int *, hash_t *, FILE *);
+static gboolean read_hash (char *, float *, int *, hash_t *, FILE *);
 
 cache_t *
 cache_new (const gchar *file)
@@ -157,7 +157,8 @@ cache_load (cache_t *cache, const char *filename)
 {
   FILE *fp;
   gchar line[PATH_MAX], file[PATH_MAX];
-  int off, alg;
+  float off;
+  int alg;
   hash_t value[1];
   gchar *localfile;
 
@@ -208,7 +209,7 @@ cache_has (cache_t *cache, const gchar *file, int off, int alg)
 }
 
 gboolean
-cache_get (cache_t *cache, const gchar *file, int off, int alg, hash_t *hp)
+cache_get (cache_t *cache, const gchar *file, float off, int alg, hash_t *hp)
 {
   struct cache_value *value;
   gboolean ret;
@@ -224,7 +225,7 @@ cache_get (cache_t *cache, const gchar *file, int off, int alg, hash_t *hp)
 }
 
 gboolean
-cache_set (cache_t *cache, const gchar *file, int off, int alg, hash_t h)
+cache_set (cache_t *cache, const gchar *file, float off, int alg, hash_t h)
 {
   struct cache_value *value;
   gboolean ret;
@@ -305,7 +306,7 @@ write_hash (guint k, struct cache_value *value, FILE *fp)
   for (i = 0; i < value->hashs->len; ++ i)
     {
       n = g_ptr_array_index (value->hashs, i);
-      join_key (key, sizeof key, value->file, n->time, n->alg);
+      join_key (key, sizeof key, value->file, n->offset, n->alg);
       fprintf (fp, "%s"FDUPVES_HASH_SEPS"%llu\n", key, n->hash);
     }
 
@@ -313,7 +314,7 @@ write_hash (guint k, struct cache_value *value, FILE *fp)
 }
 
 static gboolean
-read_hash (char *file, int *off, int *alg, hash_t *h, FILE *fp)
+read_hash (char *file, float *off, int *alg, hash_t *h, FILE *fp)
 {
   char buf[PATH_MAX * 2], algs[0x10], *p;
   size_t i;
@@ -362,7 +363,7 @@ cache_value_new (cache_t *cache, const char *file)
 }
 
 static gboolean
-cache_value_set (struct cache_value *value, int time, int alg, hash_t h)
+cache_value_set (struct cache_value *value, float offset, int alg, hash_t h)
 {
   size_t i;
   struct cache_value_node *n;
@@ -370,7 +371,8 @@ cache_value_set (struct cache_value *value, int time, int alg, hash_t h)
   for (i = 0; i < value->hashs->len; ++ i)
     {
       n = g_ptr_array_index (value->hashs, i);
-      if (n->time == time
+      if ((n->offset - offset > -0.1
+           && n->offset - offset < 0.1)
 	  && n->alg == alg)
 	{
 	  n->hash = h;
@@ -381,7 +383,7 @@ cache_value_set (struct cache_value *value, int time, int alg, hash_t h)
   n = g_malloc (sizeof (struct cache_value_node));
   g_return_val_if_fail (n, FALSE);
 
-  n->time = time;
+  n->offset = offset;
   n->alg = alg;
   n->hash = h;
   g_ptr_array_add (value->hashs, n);
@@ -390,7 +392,7 @@ cache_value_set (struct cache_value *value, int time, int alg, hash_t h)
 }
 
 static gboolean
-cache_value_get (struct cache_value *value, int time, int alg, hash_t *hp)
+cache_value_get (struct cache_value *value, float offset, int alg, hash_t *hp)
 {
   size_t i;
   struct cache_value_node *n;
@@ -398,7 +400,8 @@ cache_value_get (struct cache_value *value, int time, int alg, hash_t *hp)
   for (i = 0; i < value->hashs->len; ++ i)
     {
       n = g_ptr_array_index (value->hashs, i);
-      if (n->time == time
+      if ((n->offset - offset > -0.1
+           && n->offset - offset < 0.1)
 	  && n->alg == alg)
 	{
 	  *hp = n->hash;

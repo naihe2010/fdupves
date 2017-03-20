@@ -2,10 +2,10 @@ CMAKE_MINIMUM_REQUIRED (VERSION 2.6)
 
 PROJECT (fdupves "C")
 
-SET (PROJECT_MAJOR      "Klara")
+SET (PROJECT_MAJOR      "2")
 SET (PROJECT_MINOR      "0")
-SET (PROJECT_PATCH      "9")
-SET (PROJECT_ICON       "wowgirls-klara.jpg")
+SET (PROJECT_PATCH      "0")
+SET (PROJECT_ICON       "abella.danger.png")
 
 ADD_DEFINITIONS (
   -DPACKAGE="${PROJECT_NAME}"
@@ -25,9 +25,9 @@ IF (WIN32)
     "Ffmpeg library dir")
   SET (FFMPEG_INCLUDE_DIRS ${FFMPEG_DIR}/include)
   SET (FFMPEG_LIBRARY_DIRS ${FFMPEG_DIR}/lib)
-  SET (FFMPEG_LIBRARIES avformat.lib avcodec.lib avutil.lib swscale.lib)
+  SET (FFMPEG_LIBRARIES avformat.lib avcodec.lib avutil.lib swscale.lib swresample.lib)
 ELSE (WIN32)
-  PKG_CHECK_MODULES (FFMPEG libavformat libavcodec libavutil libswscale REQUIRED)
+  PKG_CHECK_MODULES (FFMPEG libavformat libavcodec libavutil libswscale libswresample REQUIRED)
 ENDIF (WIN32)
 
 INCLUDE_DIRECTORIES (${GTK2_INCLUDE_DIRS}
@@ -107,8 +107,14 @@ SET (CPACK_PACKAGE_VERSION_PATCH ${PROJECT_PATCH})
 
 IF (UNIX)
   SET (CPACK_SET_DESTDIR ON)
-  SET (CPACK_GENERATOR RPM)
-  SET (CPACK_RPM_PACKAGE_REQUIRES "gtk2 >= 2.10.4 ffmpeg")
+  IF (EXISTS /etc/debian_version)
+    SET (CPACK_GENERATOR DEB)
+    SET (CPACK_PACKAGE_CONTACT "Alf <nhpub@sina.com>")
+  ENDIF (EXISTS /etc/debian_version)
+  IF (EXISTS /etc/redhat-release)
+    SET (CPACK_GENERATOR RPM)
+    SET (CPACK_RPM_PACKAGE_REQUIRES "gtk2 >= 2.10.4 ffmpeg")
+  ENDIF (EXISTS /etc/redhat-release)
 
   SET (CPACK_SOURCE_PACKAGE_FILE_NAME
     ${CMAKE_PROJECT_NAME}-${PROJECT_MAJOR}.${PROJECT_MINOR}.${PROJECT_PATCH})
