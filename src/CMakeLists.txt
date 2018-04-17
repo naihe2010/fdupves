@@ -70,10 +70,10 @@ IF (WIN32)
   FIND_FILE (LIBPANGOFT2 libpangoft2-1.0-0.dll)
   FIND_FILE (LIBZLIB1 zlib1.dll)
   SET (FFMPEGDLL
-    ${FFMPEG_DIR}/bin/avformat-54.dll
-    ${FFMPEG_DIR}/bin/avcodec-54.dll
-    ${FFMPEG_DIR}/bin/avutil-52.dll
-    ${FFMPEG_DIR}/bin/swscale-2.dll
+    ${FFMPEG_DIR}/bin/avformat-57.dll
+    ${FFMPEG_DIR}/bin/avcodec-57.dll
+    ${FFMPEG_DIR}/bin/avutil-55.dll
+    ${FFMPEG_DIR}/bin/swscale-4.dll
     ${FFMPEG_DIR}/bin/swresample-2.dll
     ${FFMPEG_DIR}/bin/ffplay.exe
     )
