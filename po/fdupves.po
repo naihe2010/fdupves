@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: acnchess 0.0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-04-16 16:26+0800\n"
+"POT-Creation-Date: 2018-04-17 14:19+0800\n"
 "PO-Revision-Date: 2011-09-05 11:12+0800\n"
 "Last-Translator: Alf <naihe2010@126.com>\n"
 "Language-Team: Alf <naihe2010@126.com>\n"
@@ -76,13 +76,13 @@ msgid "Memory error: %s"
 msgstr "内存错误：%s"
 
 #: /home/p/private/Nutstore/project/fdupves/src/video.c:173
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:176
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:168
 #, c-format
 msgid "Unsupported codec: %s"
 msgstr "不支持的格式：%s"
 
 #: /home/p/private/Nutstore/project/fdupves/src/video.c:253
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:257
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:249
 msgid "Cannot receive frame from context"
 msgstr "不能从上下文中接收帧"
 
@@ -96,39 +96,34 @@ msgstr "不能初使化转图形转化器"
 msgid "could not find audio stream: %s"
 msgstr "不能找到音频流：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:167
-#, c-format
-msgid "No audio codec: %s"
-msgstr "不支持的格式：%s"
-
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:182
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:174
 #, c-format
 msgid "Open codec error: %s"
 msgstr "打开解码器错误：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:191
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:183
 #, c-format
 msgid "alloc frame error: %s"
 msgstr "申请帧内存错误：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:205
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:197
 #, c-format
 msgid "alloc packet error: %s"
 msgstr "申请包内存错误：%s"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:221
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:213
 msgid "Could not allocate resampler context\n"
 msgstr "不能初始化重采样上下文\n"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:228
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:220
 msgid "Could not initialize resampler context\n"
 msgstr "不能初使化重采样转化器\n"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:276
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:268
 msgid "Could not fill resampler buffer\n"
 msgstr "不能初始化重采样内存\n"
 
-#: /home/p/private/Nutstore/project/fdupves/src/audio.c:285
+#: /home/p/private/Nutstore/project/fdupves/src/audio.c:277
 msgid "Could not resample samples.\n"
 msgstr "不能初始化重采样内容\n"
 
@@ -380,3 +375,6 @@ msgstr "向前"
 #: /home/p/private/Nutstore/project/fdupves/src/gui.c:1790
 msgid "Next"
 msgstr "向后"
+
+#~ msgid "No audio codec: %s"
+#~ msgstr "不支持的格式：%s"

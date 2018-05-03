@@ -273,7 +273,7 @@ audio_time_hash (const char *file, float offset)
       g_warning (_ ("get audio screenshot failed: %s"), file);
       return 0;
     }
-  
+
 #ifdef _DEBUG
   basename = g_path_get_basename (file);
   g_snprintf (outfile, sizeof outfile, "%s/%s-%f.raw",
@@ -303,7 +303,7 @@ audio_buffer_hash (const short *buffer, int length)
 {
   unsigned char img_buf[AUDIO_HASH_LENGTH];
   double sum, avg;
-  short value;
+  unsigned int uvalue;
   hash_t hash;
   size_t i, j;
 
@@ -313,12 +313,8 @@ audio_buffer_hash (const short *buffer, int length)
     {
       for (sum = 0.0, j = 0; j < AUDIO_HASH_FRAME; ++ j)
         {
-          value = buffer[i * AUDIO_HASH_OVERLAP + j];
-          if (value < 0)
-            {
-              value = 0 - value;
-            }
-          sum += value;
+          uvalue = buffer[i * AUDIO_HASH_OVERLAP + j] + USHRT_MAX;
+          sum += uvalue;
         }
       avg = sum / AUDIO_HASH_FRAME;
       avg = avg * UCHAR_MAX / SHRT_MAX;
