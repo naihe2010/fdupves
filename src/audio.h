@@ -45,36 +45,35 @@
 
 #define AUDIO_HASH_COUNT   (AUDIO_HASH_OVERLAP * (AUDIO_HASH_LENGTH - 1) + AUDIO_HASH_FRAME)
 
-typedef struct
-{
-  /* filename */
-  char *name;
+typedef struct {
+    /* filename */
+    char *name;
 
-  /* dirname */
-  char *dir;
+    /* dirname */
+    char *dir;
 
-  /* Format */
-  const char *format;
+    /* Format */
+    const char *format;
 
-  /* Duration */
-  double length;
+    /* Duration */
+    double length;
 
-  /* Size */
-  int size[2];
+    /* Size */
+    int size[2];
 } audio_info;
 
-audio_info * audio_get_info (const char *file);
+audio_info *audio_get_info(const char *file);
 
-void audio_info_free (audio_info *info);
+void audio_info_free(audio_info *info);
 
-int audio_get_length (const char *file);
+int audio_get_length(const char *file);
 
-int audio_time_screenshot (const char *file, float offset,
-                           int samples,
-                           short *buffer, int buf_len);
+int audio_time_screenshot(const char *file, float offset,
+                          int samples,
+                          short *buffer, int buf_len);
 
-int audio_time_screenshot_file (const char *file, float offset,
-                                int samples,
-                                const char *out_file);
+int audio_time_screenshot_file(const char *file, float offset,
+                               int samples,
+                               const char *out_file);
 
 #endif

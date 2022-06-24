@@ -57,14 +57,14 @@
 #define FD_VIDEO 2
 #define FD_AUDIO 3
 
-gchar * fd_realpath (const gchar *);
+gchar *fd_realpath(const gchar *);
 
-gchar * fd_install_path ();
+gchar *fd_install_path();
 
-int is_image (const char *);
+int is_image(const char *);
 
-int is_video (const gchar *);
+int is_video(const gchar *);
 
-int is_audio (const gchar *);
+int is_audio(const gchar *);
 
 #endif

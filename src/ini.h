@@ -38,48 +38,47 @@
 #define SAME_RATE_MAX 10
 #endif
 
-typedef struct
-{
-  gboolean verbose;
+typedef struct {
+    gboolean verbose;
 
-  gboolean proc_image;
-  gchar **image_suffix;
+    gboolean proc_image;
+    gchar **image_suffix;
 
-  gboolean proc_video;
-  gchar **video_suffix;
+    gboolean proc_video;
+    gchar **video_suffix;
 
-  gboolean proc_audio;
-  gchar **audio_suffix;
+    gboolean proc_audio;
+    gchar **audio_suffix;
 
-  gint compare_area;
+    gint compare_area;
 
-  gboolean proc_other;
+    gboolean proc_other;
 
-  gint compare_count;
+    gint compare_count;
 
-  gint same_image_distance;
-  gint same_video_distance;
-  gint same_audio_distance;
+    gint same_image_distance;
+    gint same_video_distance;
+    gint same_audio_distance;
 
-  gint thumb_size[2];
+    gint thumb_size[2];
 
-  gint video_timers[0x10][3];
+    gint video_timers[0x10][3];
 
-  gchar *cache_file;
+    gchar *cache_file;
 
-  /* Private values */
-  GKeyFile *keyfile;
+    /* Private values */
+    GKeyFile *keyfile;
 
 } ini_t;
 
-extern ini_t * g_ini;
+extern ini_t *g_ini;
 
-ini_t * ini_new ();
+ini_t *ini_new();
 
-ini_t * ini_new_with_file (const gchar *);
+ini_t *ini_new_with_file(const gchar *);
 
-gboolean ini_load (ini_t *, const gchar *);
+gboolean ini_load(ini_t *, const gchar *);
 
-gboolean ini_save (ini_t *, const gchar *);
+gboolean ini_save(ini_t *, const gchar *);
 
 #endif

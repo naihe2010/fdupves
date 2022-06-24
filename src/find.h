@@ -29,39 +29,36 @@
 
 #include <glib.h>
 
-typedef enum
-  {
+typedef enum {
     FIND_IMAGE,
     FIND_VIDEO,
     FIND_AUDIO,
-  } find_type;
+} find_type;
 
-typedef enum
-  {
+typedef enum {
     FD_SAME_IMAGE,
     FD_SAME_VIDEO_HEAD,
     FD_SAME_VIDEO_TAIL,
     FD_SAME_AUDIO_HEAD,
     FD_SAME_AUDIO_TAIL,
-  } same_type;
+} same_type;
 
-typedef struct
-{
-  long total;
-  long now;
-  const gchar *doing;
-  gboolean found;
-  same_type type;
-  const gchar *afile;
-  const gchar *bfile;
+typedef struct {
+    long total;
+    long now;
+    const gchar *doing;
+    gboolean found;
+    same_type type;
+    const gchar *afile;
+    const gchar *bfile;
 } find_step;
 
-typedef void (*find_step_cb) (const find_step *, gpointer);
+typedef void (*find_step_cb)(const find_step *, gpointer);
 
-int find_images (GPtrArray *, find_step_cb, gpointer);
+int find_images(GPtrArray *, find_step_cb, gpointer);
 
-int find_videos (GPtrArray *, find_step_cb, gpointer);
+int find_videos(GPtrArray *, find_step_cb, gpointer);
 
-int find_audios (GPtrArray *, find_step_cb, gpointer);
+int find_audios(GPtrArray *, find_step_cb, gpointer);
 
 #endif

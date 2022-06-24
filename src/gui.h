@@ -30,6 +30,6 @@
 
 #include <gtk/gtk.h>
 
-gboolean gui_init (int argc, char *argv[]);
+gboolean gui_init(int argc, char *argv[]);
 
 #endif

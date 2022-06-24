@@ -53,77 +53,70 @@
 #include <google/profiler.h>
 #endif
 
-static void fdupves_cleanup ();
+static void fdupves_cleanup();
 
 int
-main (int argc, char *argv[])
-{
-  gchar *prgdir, *localedir;
+main(int argc, char *argv[]) {
+    gchar *prgdir, *localedir;
 
-  prgdir = fd_install_path ();
-  if (prgdir)
-    {
-      localedir = g_build_filename (prgdir, FD_SYS_LOCALE_DIR, NULL);
-      g_free (prgdir);
-    }
-  else
-    {
-      localedir = g_strdup (FD_SYS_LOCALE_DIR);
+    prgdir = fd_install_path();
+    if (prgdir) {
+        localedir = g_build_filename(prgdir, FD_SYS_LOCALE_DIR, NULL);
+        g_free(prgdir);
+    } else {
+        localedir = g_strdup(FD_SYS_LOCALE_DIR);
     }
 
-  if (localedir)
-    {
-      setlocale (LC_ALL, "");
-      bindtextdomain (PACKAGE, localedir);
-      bind_textdomain_codeset (PACKAGE, "UTF-8");
-      textdomain (PACKAGE);
-      g_free (localedir);
+    if (localedir) {
+        setlocale(LC_ALL, "");
+        bindtextdomain(PACKAGE, localedir);
+        bind_textdomain_codeset(PACKAGE, "UTF-8");
+        textdomain(PACKAGE);
+        g_free(localedir);
     }
 
-  /* av format init */
-  av_register_all ();
+    /* av format init */
+    //av_register_all ();
 
 #ifdef WIN32
-  /* com init */
-  CoInitializeEx (NULL, COINIT_MULTITHREADED);
+    /* com init */
+    CoInitializeEx (NULL, COINIT_MULTITHREADED);
 #endif
 
 #if GLIB_CHECK_VERSION(2, 32, 0)
 #else
-  if (!g_thread_supported ())
-    {
-      g_thread_init (NULL);
-    }
+    if (!g_thread_supported ())
+      {
+        g_thread_init (NULL);
+      }
 #endif
-  gdk_threads_init ();
+    //gdk_threads_init ();
 
-  gtk_init (&argc, &argv);
+    gtk_init(&argc, &argv);
 
-  gui_init (argc, argv);
+    gui_init(argc, argv);
 
-  cache_new (g_ini->cache_file);
+    cache_new(g_ini->cache_file);
 
-  gdk_threads_enter ();
+    //gdk_threads_enter ();
 #ifdef FDUPVES_ENABLE_PROFILER
-  ProfilerStart ("fdupves.prof");
+    ProfilerStart ("fdupves.prof");
 #endif
-  gtk_main ();
+    gtk_main();
 #ifdef FDUPVES_ENABLE_PROFILER
-  ProfilerStop ();
+    ProfilerStop ();
 #endif
-  gdk_threads_leave ();
+    //gdk_threads_leave ();
 
-  fdupves_cleanup ();
+    fdupves_cleanup();
 
-  return 0;
+    return 0;
 }
 
 static void
-fdupves_cleanup ()
-{
-  if (g_cache)
-    {
-      cache_save (g_cache, g_ini->cache_file);
-      cache_free (g_cache);
+fdupves_cleanup() {
+    if (g_cache) {
+        cache_save(g_cache, g_ini->cache_file);
+        cache_free(g_cache);
     }
 }

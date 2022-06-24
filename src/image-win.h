@@ -29,6 +29,6 @@
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
-GdkPixbuf * gdk_pixbuf_new_from_file_at_scale_wic (const gchar *, gint, gint, gboolean, GError **);
+GdkPixbuf *gdk_pixbuf_new_from_file_at_scale_wic(const gchar *, gint, gint, gboolean, GError **);
 
 #endif
