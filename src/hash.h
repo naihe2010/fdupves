@@ -27,6 +27,8 @@
 #ifndef _FDUPVES_HASH_H_
 #define _FDUPVES_HASH_H_
 
+#include <glib.h>
+
 enum hash_type {
     FDUPVES_IMAGE_HASH,
     FDUPVES_IMAGE_PHASH,
@@ -36,6 +38,10 @@ enum hash_type {
 extern const char *hash_phrase[];
 
 typedef unsigned long long hash_t;
+
+typedef struct {
+    GPtrArray *array;
+} hash_array_t;
 
 hash_t image_file_hash(const char *);
 
@@ -47,12 +53,20 @@ hash_t video_time_phash(const char *, float);
 
 hash_t image_file_phash(const char *);
 
-hash_t image_buffer_phash(const char *, float);
-
-hash_t audio_buffer_hash(const short *, int);
-
-hash_t audio_time_hash(const char *, float);
+hash_array_t *audio_hashes(const char *);
 
 int hash_cmp(hash_t, hash_t);
+
+hash_array_t *hash_array_new();
+
+void hash_array_free(hash_array_t *hashArray);
+
+gsize hash_array_size(hash_array_t *hashArray);
+
+hash_t *hash_array_index(hash_array_t *hashArray, int index);
+
+void hash_array_append(hash_array_t *hashArray, hash_t *hash);
+
+gsize hash_array_compare(hash_array_t *hashArray1, hash_array_t *hashArray2);
 
 #endif

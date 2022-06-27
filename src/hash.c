@@ -31,6 +31,7 @@
 #include "ini.h"
 #include "cache.h"
 #include "util.h"
+#include "find.h"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
@@ -165,19 +166,19 @@ hash_cmp(hash_t a, hash_t b) {
 
     c = a ^ b;
     switch (g_ini->compare_area) {
-        case 1:
+        case FD_COMPARE_TOP:
             c = c & 0xFFFFFF00ULL;
             break;
 
-        case 2:
+        case FD_COMPARE_BOTTOM:
             c = c & 0x00FFFFFFULL;
             break;
 
-        case 3:
+        case FD_COMPARE_LEFT:
             c = c & 0xFCFCFCFCULL;
             break;
 
-        case 4:
+        case FD_COMPARE_RIGHT:
             c = c & 0x3F3F3F3FULL;
             break;
 
@@ -225,79 +226,84 @@ video_time_hash(const char *file, float offset) {
     return h;
 }
 
-hash_t
-audio_time_hash(const char *file, float offset) {
-    hash_t h;
-    short buffer[AUDIO_HASH_COUNT];
-#ifdef _DEBUG
-    gchar *basename, outfile[PATH_MAX];
-#endif
+
+hash_array_t *
+audio_hashes(const char *path) {
+    hash_array_t *hashArray;
+    gchar *buffer;
+    gsize len;
 
     if (g_cache) {
-        if (cache_get(g_cache, file, offset, FDUPVES_AUDIO_HASH, &h)) {
-            return h;
+        if (cache_gets(g_cache, path, 0, &hashArray)) {
+            return hashArray;
         }
     }
 
-    if (audio_time_screenshot(file, offset,
-                              AUDIO_HASH_COUNT,
-                              buffer, sizeof(buffer)) <= 0) {
-        g_warning (_("get audio screenshot failed: %s"), file);
-        return 0;
-    }
+    len = FDUPVES_HASH_LEN * FDUPVES_HASH_LEN * 3;
+    buffer = g_malloc(len);
+    g_return_val_if_fail (buffer, 0);
 
-#ifdef _DEBUG
-    basename = g_path_get_basename (file);
-    g_snprintf (outfile, sizeof outfile, "%s/%s-%f.raw",
-            g_get_tmp_dir (),
-            basename, offset);
-    g_free (basename);
-    audio_time_screenshot_file (file, offset,
-                                AUDIO_HASH_COUNT,
-                    outfile);
-#endif
+    // TODO audio hashes
+    /*
+    video_time_screenshot(file, offset,
+                          FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
+                          buffer, len);
 
-    h = audio_buffer_hash(buffer, sizeof buffer);
+    h = image_buffer_hash(buffer, len);
+    g_free(buffer);
+     */
 
     if (g_cache) {
-        if (h) {
-            cache_set(g_cache, file, offset, FDUPVES_AUDIO_HASH, h);
+        if (hashArray) {
+            cache_sets(g_cache, path, 0xFFFF, hashArray);
         }
     }
 
-    return h;
+    return hashArray;
 }
 
-hash_t
-audio_buffer_hash(const short *buffer, int length) {
-    unsigned char img_buf[AUDIO_HASH_LENGTH];
-    double sum, avg;
-    unsigned int uvalue;
-    hash_t hash;
-    size_t i, j;
+hash_array_t *
+hash_array_new() {
+    hash_array_t *hashArray;
 
-    g_assert ((size_t) length <= AUDIO_HASH_COUNT * sizeof(short));
+    hashArray = g_new0(hash_array_t, 1);
+    g_return_val_if_fail(hashArray, NULL);
 
-    for (i = 0; i < AUDIO_HASH_LENGTH; ++i) {
-        for (sum = 0.0, j = 0; j < AUDIO_HASH_FRAME; ++j) {
-            uvalue = buffer[i * AUDIO_HASH_OVERLAP + j] + USHRT_MAX;
-            sum += uvalue;
-        }
-        avg = sum / AUDIO_HASH_FRAME;
-        avg = avg * UCHAR_MAX / SHRT_MAX;
-        img_buf[i] = avg;
+    hashArray->array = g_ptr_array_new_with_free_func(g_free);
+    if (hashArray->array == NULL) {
+        g_free(hashArray);
+        return NULL;
     }
 
-    for (sum = 0, i = 0; i < AUDIO_HASH_LENGTH; ++i) {
-        sum += img_buf[i];
-    }
-    avg = sum / AUDIO_HASH_LENGTH;
+    return hashArray;
+}
 
-    for (hash = 0, i = 0; i < AUDIO_HASH_LENGTH; ++i) {
-        if (img_buf[i] >= avg) {
-            hash |= ((hash_t) 1 << i);
-        }
-    }
+void
+hash_array_free(hash_array_t *hashArray) {
+    g_ptr_array_free(hashArray->array, TRUE);
+    g_free(hashArray);
+}
 
-    return hash;
+gsize
+hash_array_size(hash_array_t *hashArray) {
+    return hashArray->array->len;
+}
+
+hash_t *
+hash_array_index(hash_array_t *hashArray, int index) {
+    hash_t *hashp = g_ptr_array_index(hashArray->array, index);
+    return hashp;
+}
+
+void
+hash_array_append(hash_array_t *hashArray, hash_t *hash) {
+    hash_t *nhash = g_new (hash_t, 1);
+    g_return_if_fail (nhash);
+    *nhash = *hash;
+    g_ptr_array_add(hashArray->array, nhash);
+}
+
+gsize
+hash_array_compare(hash_array_t *hashArray1, hash_array_t *hashArray2) {
+    return 0;
 }

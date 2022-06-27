@@ -392,7 +392,7 @@ gui_log(const gchar *log_domain,
 
     gui = (gui_t *) user_data;
 
-    //gdk_threads_enter ();
+    gdk_threads_enter();
     gtk_list_store_append(gui->logliststore, itr);
     gtk_list_store_set(gui->logliststore, itr, 0, message, -1);
 
@@ -410,7 +410,7 @@ gui_log(const gchar *log_domain,
                                       itr);
         gtk_list_store_remove(gui->logliststore, itr);
     }
-    //gdk_threads_leave ();
+    gdk_threads_leave();
 }
 
 static void
@@ -499,11 +499,13 @@ mainframe_new(gui_t *gui) {
 
     comparearea = gtk_combo_box_text_new();
     gtk_box_pack_start(GTK_BOX (typebox), comparearea, FALSE, FALSE, 2);
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (comparearea), _ ("Compare all"));
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (comparearea), _ ("Compare top"));
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (comparearea), _ ("Compare bottom"));
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (comparearea), _ ("Compare left"));
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (comparearea), _ ("Compare right"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (comparearea), FD_COMPARE_ALL, _ ("Compare all"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (comparearea), FD_COMPARE_TOP, _ ("Compare top"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (comparearea), FD_COMPARE_BOTTOM, _ ("Compare bottom"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (comparearea), FD_COMPARE_LEFT, _ ("Compare left"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (comparearea), FD_COMPARE_RIGHT, _ ("Compare right"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (comparearea), FD_COMPARE_AUDIO_IN_VIDEO,
+                                   _ ("compare audio in video"));
     g_signal_connect (G_OBJECT(comparearea), "changed", G_CALLBACK(gui_compareareacb), gui);
     gtk_combo_box_set_active(GTK_COMBO_BOX (comparearea), g_ini->compare_area);
 
@@ -549,9 +551,9 @@ mainframe_new(gui_t *gui) {
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (combo),
                                    _ ("Select manual"));
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (combo),
-                                   _ ("select small file"));
+                                   _ ("select small path"));
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (combo),
-                                   _ ("select big file"));
+                                   _ ("select big path"));
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (combo),
                                    _ ("select small image"));
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT (combo),
@@ -679,20 +681,10 @@ gui_add_cb(GtkWidget *wid, gui_t *gui) {
 
 static void
 gui_find_cb(GtkWidget *wid, gui_t *gui) {
-#if GLIB_CHECK_VERSION(2, 32, 0)
     GThread *th;
 
     th = g_thread_try_new("find", (GThreadFunc) gui_find_thread, gui, NULL);
     g_thread_unref(th);
-#else
-    g_thread_create_full ((GThreadFunc) gui_find_thread,
-              gui,
-              FDUPVES_THREAD_STACK_SIZE,
-              FALSE,
-              FALSE,
-              0,
-              NULL);
-#endif
 }
 
 static void
@@ -700,7 +692,7 @@ gui_find_thread(gui_t *gui) {
     int fimage, fvideo, faudio;
 
     /* disable the add/find tool time */
-    //gdk_threads_enter ();
+    gdk_threads_enter();
     gtk_widget_set_sensitive(GTK_WIDGET (gui->but_add), FALSE);
     gtk_widget_set_sensitive(GTK_WIDGET (gui->but_find), FALSE);
     gtk_widget_set_sensitive(GTK_WIDGET (gui->but_del), FALSE);
@@ -713,7 +705,7 @@ gui_find_thread(gui_t *gui) {
         same_list_free(gui->same_list);
         gui->same_list = NULL;
     }
-    //gdk_threads_leave ();
+    gdk_threads_leave();
 
     gui->images = g_ptr_array_new_with_free_func(g_free);
     gui->videos = g_ptr_array_new_with_free_func(g_free);
@@ -736,7 +728,11 @@ gui_find_thread(gui_t *gui) {
     if (g_ini->proc_video && gui->videos->len > 0) {
         g_message (_("find %d videos to process"), gui->videos->len);
 
-        find_videos(gui->videos, (find_step_cb) gui_find_step_cb, gui);
+        if (g_ini->compare_area == FD_COMPARE_AUDIO_IN_VIDEO) {
+            find_audios(gui->videos, (find_step_cb) gui_find_step_cb, gui);
+        } else {
+            find_videos(gui->videos, (find_step_cb) gui_find_step_cb, gui);
+        }
         fvideo = g_slist_length(gui->same_list);
         fvideo -= fimage;
         g_message (_("find %d groups same videos"), fvideo);
@@ -757,7 +753,7 @@ gui_find_thread(gui_t *gui) {
     g_ptr_array_free(gui->videos, TRUE);
     g_ptr_array_free(gui->audios, TRUE);
 
-    //gdk_threads_enter ();
+    gdk_threads_enter();
     gtk_tree_view_expand_all(GTK_TREE_VIEW (gui->restree));
 
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR (gui->progress), 0);
@@ -767,7 +763,7 @@ gui_find_thread(gui_t *gui) {
     gtk_widget_set_sensitive(GTK_WIDGET (gui->but_add), TRUE);
     gtk_widget_set_sensitive(GTK_WIDGET (gui->but_find), TRUE);
     gtk_widget_set_sensitive(GTK_WIDGET (gui->but_del), TRUE);
-    //gdk_threads_leave ();
+    gdk_threads_leave();
 }
 
 static void
@@ -1004,6 +1000,12 @@ gui_list_file(gui_t *gui, const gchar *path) {
     }
 
     if (g_ini->proc_audio && is_audio(path)) {
+        p = g_strdup(path);
+        g_ptr_array_add(gui->audios, p);
+        found = 1;
+    }
+
+    if (g_ini->compare_area == 5 && is_video(path)) {
         p = g_strdup(path);
         g_ptr_array_add(gui->audios, p);
         found = 1;
@@ -1814,18 +1816,18 @@ diffdia_onseekchanged(GtkEntry *entry, diff_dialog *dia) {
 static void
 gui_find_step_cb(const find_step *step, gui_t *gui) {
     if (step->doing) {
-        //gdk_threads_enter ();
+        gdk_threads_enter();
         gtk_progress_bar_set_text(GTK_PROGRESS_BAR (gui->progress),
                                   step->doing);
-        //gdk_threads_leave ();
+        gdk_threads_leave();
     }
 
     if (step->total > 0 && step->now < step->total) {
-        //gdk_threads_enter ();
+        gdk_threads_enter();
         gtk_progress_bar_set_fraction
                 (GTK_PROGRESS_BAR (gui->progress),
                  (gdouble) step->now / (gdouble) step->total);
-        //gdk_threads_leave ();
+        gdk_threads_leave();
     }
 
     if (step->found) {
@@ -1882,7 +1884,7 @@ gui_append_same_slist(gui_t *gui, GSList *slist,
                                bfile,
                                filetype);
 
-            //gdk_threads_enter ();
+            gdk_threads_enter();
             if (node->show) {
                 path = gtk_tree_row_reference_get_path(node->treerowref);
                 gtk_tree_model_get_iter(GTK_TREE_MODEL (gui->restreestore), itr, path);
@@ -1890,7 +1892,7 @@ gui_append_same_slist(gui_t *gui, GSList *slist,
                 file_node_to_tree_iter(fn, gui->restreestore, itrc);
                 gtk_tree_path_free(path);
             }
-            //gdk_threads_leave ();
+            gdk_threads_leave();
 
             return slist;
         } else if (bfind) {
@@ -1898,7 +1900,7 @@ gui_append_same_slist(gui_t *gui, GSList *slist,
                                afile,
                                filetype);
 
-            //gdk_threads_enter ();
+            gdk_threads_enter();
             if (node->show) {
                 path = gtk_tree_row_reference_get_path(node->treerowref);
                 gtk_tree_model_get_iter(GTK_TREE_MODEL (gui->restreestore), itr, path);
@@ -1906,7 +1908,7 @@ gui_append_same_slist(gui_t *gui, GSList *slist,
                 file_node_to_tree_iter(fn, gui->restreestore, itrc);
                 gtk_tree_path_free(path);
             }
-            //gdk_threads_leave ();
+            gdk_threads_leave();
 
             return slist;
         }
@@ -1923,7 +1925,7 @@ gui_append_same_slist(gui_t *gui, GSList *slist,
                         bfile,
                         filetype);
 
-    //gdk_threads_enter ();
+    gdk_threads_enter();
     gtk_tree_store_append(gui->restreestore, itr, NULL);
     file_node_to_tree_iter(fn, gui->restreestore, itr);
     path = gtk_tree_model_get_path(GTK_TREE_MODEL (gui->restreestore), itr);
@@ -1932,7 +1934,7 @@ gui_append_same_slist(gui_t *gui, GSList *slist,
     gtk_tree_store_append(gui->restreestore, itrc, itr);
     file_node_to_tree_iter(fn2, gui->restreestore, itrc);
     node->show = TRUE;
-    //gdk_threads_leave ();
+    gdk_threads_leave();
 
     return g_slist_append(slist, node);
 }

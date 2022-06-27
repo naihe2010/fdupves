@@ -83,22 +83,15 @@ main(int argc, char *argv[]) {
     CoInitializeEx (NULL, COINIT_MULTITHREADED);
 #endif
 
-#if GLIB_CHECK_VERSION(2, 32, 0)
-#else
-    if (!g_thread_supported ())
-      {
-        g_thread_init (NULL);
-      }
-#endif
-    //gdk_threads_init ();
+    gdk_threads_init();
 
     gtk_init(&argc, &argv);
 
     gui_init(argc, argv);
 
-    cache_new(g_ini->cache_file);
+    cache_open(g_ini->cache_file);
 
-    //gdk_threads_enter ();
+    gdk_threads_enter();
 #ifdef FDUPVES_ENABLE_PROFILER
     ProfilerStart ("fdupves.prof");
 #endif
@@ -106,7 +99,7 @@ main(int argc, char *argv[]) {
 #ifdef FDUPVES_ENABLE_PROFILER
     ProfilerStop ();
 #endif
-    //gdk_threads_leave ();
+    gdk_threads_leave();
 
     fdupves_cleanup();
 
@@ -116,7 +109,6 @@ main(int argc, char *argv[]) {
 static void
 fdupves_cleanup() {
     if (g_cache) {
-        cache_save(g_cache, g_ini->cache_file);
-        cache_free(g_cache);
+        cache_close(g_cache);
     }
 }

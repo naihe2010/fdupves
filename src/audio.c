@@ -103,19 +103,20 @@ audio_get_length(const char *file) {
 }
 
 int
-audio_time_screenshot(const char *file, float offset,
-                      int samples,
-                      short *buffer, int buf_len) {
+audio_extract(const char *file,
+              float offset, float length,
+              int ar,
+              short **pBuffer, int *pLen) {
     AVFormatContext *format_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
+    AVStream *stream = NULL;
     const AVCodec *codec = NULL;
     AVFrame *frame = NULL, *frame_s16 = NULL;
     AVPacket *packet = NULL;
     struct SwrContext *convert_ctx = NULL;
     int s, ret, bytes = -1, want_samples, got_samples;
     int64_t seek_target;
-
-    g_assert (samples * sizeof(short) <= (size_t) buf_len);
+    float total_length;
 
     if (avformat_open_input(&format_ctx, file, NULL, NULL) != 0) {
         g_warning (_("could not open: %s"), file);
@@ -133,20 +134,21 @@ audio_time_screenshot(const char *file, float offset,
         goto end;
     }
 
+    stream = format_ctx->streams[s];
+
     codec_ctx = avcodec_alloc_context3(NULL);
     if (codec_ctx == NULL) {
         g_warning (_("Memory error: %s"), file);
         goto end;
     }
 
-    ret = avcodec_parameters_to_context(codec_ctx, format_ctx->streams[s]->codecpar);
+    ret = avcodec_parameters_to_context(codec_ctx, stream->codecpar);
     if (ret < 0) {
         g_warning (_("Memory error: %s"), file);
         goto end;
     }
 
-    codec_ctx->pkt_timebase = format_ctx->streams[s]->time_base;
-    //av_codec_set_pkt_timebase (codec_ctx, format_ctx->streams[s]->time_base);
+    codec_ctx->pkt_timebase = stream->time_base;
     codec = avcodec_find_decoder(codec_ctx->codec_id);
     if (codec == NULL) {
         g_warning (_("Unsupported codec: %s"), file);
@@ -166,9 +168,16 @@ audio_time_screenshot(const char *file, float offset,
         goto end;
     }
 
-    seek_target = av_rescale(offset,
-                             format_ctx->streams[s]->time_base.den,
-                             format_ctx->streams[s]->time_base.num);
+    if (stream->duration != AV_NOPTS_VALUE) {
+        total_length = (float) (stream->duration * stream->time_base.num) / (float) stream->time_base.den;
+    } else {
+        total_length = (float) (stream->duration) / AV_TIME_BASE;
+    }
+    if (offset + length > total_length) {
+        length = total_length - offset;
+    }
+
+    seek_target = av_rescale((int) offset, stream->time_base.den, stream->time_base.num);
     avformat_seek_file(format_ctx, s,
                        0, seek_target, seek_target,
                        AVSEEK_FLAG_FRAME);
@@ -183,7 +192,7 @@ audio_time_screenshot(const char *file, float offset,
             NULL,
             AV_CH_LAYOUT_MONO,
             AV_SAMPLE_FMT_S16,
-            AUDIO_HASH_RATE,
+            ar,
             codec_ctx->channel_layout ? codec_ctx->channel_layout : av_get_default_channel_layout(codec_ctx->channels),
             codec_ctx->sample_fmt,
             codec_ctx->sample_rate,
@@ -196,6 +205,13 @@ audio_time_screenshot(const char *file, float offset,
 
     /* initialize the resampling context */
     if ((ret = swr_init(convert_ctx)) < 0) {
+        g_warning (_("Could not initialize resampler context\n"));
+        goto end;
+    }
+
+    *pLen = ar * length;
+    *pBuffer = g_new(short, *pLen);
+    if (*pBuffer == NULL) {
         g_warning (_("Could not initialize resampler context\n"));
         goto end;
     }
@@ -227,13 +243,13 @@ audio_time_screenshot(const char *file, float offset,
 
         want_samples = av_rescale_rnd
                 (swr_get_delay(convert_ctx, codec_ctx->sample_rate)
-                 + frame->nb_samples, AUDIO_HASH_RATE, codec_ctx->sample_rate, AV_ROUND_UP);
-        if (got_samples + want_samples > samples) {
-            want_samples = samples - got_samples;
+                 + frame->nb_samples, ar, codec_ctx->sample_rate, AV_ROUND_UP);
+        if (got_samples + want_samples > *pLen) {
+            want_samples = *pLen - got_samples;
         }
 
         bytes = av_samples_fill_arrays(frame_s16->data, frame_s16->linesize,
-                                       (uint8_t *) buffer + got_samples * sizeof(short),
+                                       (uint8_t *) *pBuffer + got_samples * sizeof(short),
                                        1, want_samples,
                                        AV_SAMPLE_FMT_S16, 1);
         if (bytes < 0) {
@@ -251,8 +267,8 @@ audio_time_screenshot(const char *file, float offset,
         }
 
         got_samples += ret;
-        if (got_samples == samples) {
-            bytes = sizeof(short) * samples;
+        if (got_samples == *pLen) {
+            bytes = sizeof(short) * *pLen;
             break;
         }
     }
@@ -283,33 +299,85 @@ audio_time_screenshot(const char *file, float offset,
 }
 
 int
-audio_time_screenshot_file(const char *file, float offset,
-                           int samples,
-                           const char *out_file) {
-    FILE *fp;
+audio_extract_to_file(const char *file,
+                      float offset, float length,
+                      int ar,
+                      FILE *fp) {
     short *buf;
-    int len;
+    int samples, len;
 
-    buf = g_malloc(samples * sizeof(short));
-    g_return_val_if_fail (buf, -1);
-
-    len = audio_time_screenshot(file, offset, samples, buf, samples * sizeof(short));
-    if (len <= 0) {
-        g_free(buf);
-        return -1;
-    }
-
-    fp = fopen(out_file, "wb");
-    if (fp == NULL) {
-        g_free(buf);
-        g_warning ("open %s for write error: %s", out_file, strerror(errno));
-        return -1;
-    }
+    len = audio_extract(file, offset, length, ar, &buf, &samples);
+    g_return_val_if_fail(len > 0, -1);
 
     fwrite(buf, sizeof(short), samples, fp);
-    fclose(fp);
-
     g_free(buf);
 
     return 0;
 }
+
+struct wav_header {
+    char riffChunkId[4];
+    int32_t riffChunkSize;
+    char riffType[4];
+
+    char formatChunkId[4];
+    int32_t formatChunkSize;
+    int16_t audioFormat;
+    int16_t channels;
+    int32_t sampleRate;
+    int32_t byteRate;
+    int16_t blockAlign;
+    int16_t sampleBits;
+
+    char dataChunkId[4];
+    int32_t dataChunkSize;
+};
+
+static void
+wav_header_init(struct wav_header *header, int len, int ar, int bits) {
+    memcpy(header->riffChunkId, "RIFF", 4);
+    header->riffChunkSize = len + (int32_t) sizeof(struct wav_header);
+    memcpy(header->riffType, "WAVE", 4);
+
+    memcpy(header->formatChunkId, "fmt ", 4);
+    header->formatChunkSize = 16;
+    header->audioFormat = 1;
+    header->channels = 1;
+    header->sampleRate = ar;
+    header->byteRate = ar * bits / 8 * 1;
+    header->blockAlign = (short) (1 * bits / 8);
+    header->sampleBits = (int16_t) bits;
+
+    memcpy(header->dataChunkId, "data", 4);
+    header->dataChunkSize = len;
+}
+
+int audio_extract_to_wav(const char *file,
+                         float offset, float length,
+                         int ar,
+                         const char *out_wav) {
+    short *buf;
+    int len, samples;
+    FILE *fp;
+    struct wav_header header[1];
+
+    len = audio_extract(file, offset, length, ar, &buf, &samples);
+    g_return_val_if_fail(len > 0, -1);
+
+    wav_header_init(header, len, ar, 16);
+
+    fp = fopen(out_wav, "wb");
+    if (fp == NULL) {
+        g_free(buf);
+        g_warning ("open %s for write error: %s", out_wav, strerror(errno));
+        return -1;
+    }
+
+    fwrite(header, sizeof(header), 1, fp);
+    fwrite(buf, sizeof(short), samples, fp);
+
+    fclose(fp);
+
+    return 0;
+}
+

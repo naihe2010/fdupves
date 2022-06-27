@@ -10,6 +10,7 @@ SET(HEADERS
         audio.h
         image.h
         cache.h
+        ../sqlite3/sqlite3.h
         )
 
 SET(SOURCES
@@ -24,6 +25,7 @@ SET(SOURCES
         image.c
         cache.c
         main.c
+        ../sqlite3/sqlite3.c
         )
 
 IF (WIN32)
@@ -46,6 +48,12 @@ TARGET_LINK_LIBRARIES(fdupves
         ${GTK_LIBRARIES}
         ${FFMPEG_LIBRARIES}
         )
+
+ADD_EXECUTABLE(test_audio audio.c test_audio.c)
+TARGET_LINK_LIBRARIES(test_audio
+        ${REQ_LIBRARIES}
+        ${GTK_LIBRARIES}
+        ${FFMPEG_LIBRARIES})
 
 INSTALL(TARGETS fdupves DESTINATION bin)
 IF (WIN32)

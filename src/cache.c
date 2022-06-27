@@ -33,6 +33,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <sqlite3.h>
 
 cache_t *g_cache;
 
@@ -44,94 +45,46 @@ cache_t *g_cache;
 #define strtouq _strtoui64
 #endif
 
-#ifndef FDUPVES_KEY_SEPS
-#define FDUPVES_KEY_SEPS "||||"
-#endif
-
-#ifndef FDUPVES_HASH_SEPS
-#define FDUPVES_HASH_SEPS "::::"
-#endif
-
-static inline void
-join_key(char *key, size_t len, const char *file, float off, int alg) {
-    g_snprintf(key, len, "%s"FDUPVES_KEY_SEPS"%.2f"FDUPVES_KEY_SEPS"%s", file, off, hash_phrase[alg]);
-}
-
-static inline void
-split_key(const char *key, char *file, float *off, char *alg) {
-    char buf[PATH_MAX], *p, *e;
-
-    g_snprintf(buf, sizeof buf, "%s", key);
-
-    p = buf;
-    e = strstr(p, FDUPVES_KEY_SEPS);
-    g_return_if_fail (e);
-    *e = '\0';
-    strcpy(file, p);
-
-    p = e + 4;
-    e = strstr(p, FDUPVES_KEY_SEPS);
-    g_return_if_fail (e);
-    *e = '\0';
-    *off = atoi(p);
-
-    p = e + 4;
-    strcpy(alg, p);
-}
-
 struct cache_s {
+    sqlite3 *db;
     gchar *file;
-
-    gint count;
-
-    GHashTable *table;
-
-    GStringChunk *chunk;
 };
 
-struct cache_value_node {
-    float offset;
-    int alg;
-    hash_t hash;
-};
+static gboolean cache_exec(cache_t *cache, int (*cb)(void *, int, char **, char **), void *arg, const char *fmt, ...);
 
-struct cache_value {
-    cache_t *cache;
-    gchar *file;
-    GPtrArray *hashs;
-};
+const char *init_text = "create table media(id INTEGER PRIMARY KEY AUTOINCREMENT, path text, size bigint, mtime bigint);"
+                        "create table hash(id INTEGER PRIMARY KEY AUTOINCREMENT, media_id integer, alg int, offset real, hash varchar(32));"
+                        "create unique index index_path on media (path);";
 
-static struct cache_value *cache_value_new(cache_t *, const char *);
-
-static gboolean cache_value_set(struct cache_value *, float, int, hash_t);
-
-static gboolean cache_value_get(struct cache_value *, float, int, hash_t *);
-
-static void cache_value_free(struct cache_value *);
-
-static gboolean write_hash(guint, struct cache_value *, FILE *);
-
-static gboolean read_hash(char *, float *, int *, hash_t *, FILE *);
+static void
+cache_init(cache_t *cache) {
+    cache_exec(cache, NULL, NULL, init_text);
+}
 
 cache_t *
-cache_new(const gchar *file) {
+cache_open(const gchar *file) {
     cache_t *cache;
+    gboolean needInit;
 
     cache = g_malloc(sizeof(cache_t));
     g_return_val_if_fail (cache, NULL);
 
-    cache->table = g_hash_table_new_full(g_str_hash,
-                                         g_str_equal,
-                                         NULL,
-                                         (GDestroyNotify) cache_value_free);
-    if (cache->table == NULL) {
+    cache->file = g_strdup(file);
+
+    needInit = FALSE;
+    if (g_file_test(file, G_FILE_TEST_EXISTS) == FALSE) {
+        needInit = TRUE;
+    }
+
+    if (sqlite3_open(file, &cache->db) != 0) {
+        g_warning ("Open cache file: %s failed:%s.", file, strerror(errno));
         g_free(cache);
         return NULL;
     }
 
-    cache->chunk = g_string_chunk_new(PATH_MAX * 1024 * 10);
-
-    cache_load(cache, file);
+    if (needInit) {
+        cache_init(cache);
+    }
 
     if (g_cache == NULL) {
         g_cache = cache;
@@ -141,244 +94,184 @@ cache_new(const gchar *file) {
 }
 
 void
-cache_free(cache_t *cache) {
-    g_string_chunk_free(cache->chunk);
-    g_hash_table_destroy(cache->table);
+cache_close(cache_t *cache) {
+    sqlite3_close(cache->db);
+    g_free(cache->file);
     g_free(cache);
 }
 
-gboolean
-cache_load(cache_t *cache, const char *filename) {
-    FILE *fp;
-    gchar line[PATH_MAX], file[PATH_MAX];
-    float off;
-    int alg;
-    hash_t value[1];
-    gchar *localfile;
+static gboolean
+cache_exec(cache_t *cache, int (*cb)(void *, int, char **, char **), void *arg, const char *fmt, ...) {
+    int rc;
+    va_list ap;
+    char text[1024], *errMsg;
 
-    localfile = g_locale_from_utf8(filename, -1, NULL, NULL, NULL);
-    g_return_val_if_fail (localfile, FALSE);
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
 
-    fp = fopen(localfile, "rb");
-    if (fp == NULL) {
-        g_warning ("Open cache file: %s failed:%s.", localfile, strerror(errno));
-        g_free(localfile);
+    rc = sqlite3_exec(cache->db, text, cb, arg, &errMsg);
+    if (rc != SQLITE_OK) {
+        g_warning("SQL error: %s in [%s]\n", errMsg, text);
+        sqlite3_free(errMsg);
         return FALSE;
     }
-
-    //strip the version line. now this is not used.
-    fgets(line, sizeof line, fp);
-
-    alg = 0;
-    off = 0;
-    while (read_hash(file, &off, &alg, value, fp)) {
-        if (g_file_test(file, G_FILE_TEST_IS_REGULAR)) {
-            cache_set(cache, file, off, alg, *value);
-        }
-    }
-
-    fclose(fp);
-
-    g_free(localfile);
 
     return TRUE;
 }
 
-gboolean
-cache_has(cache_t *cache, const gchar *file, int off, int alg) {
-    char buf[PATH_MAX];
-    gpointer v;
+static int
+get_id_callback(void *para, int n_column, char **column_value, char **column_name) {
+    int *idp = (int *) para;
+    if (column_value[0] != NULL)
+        *idp = atoi(column_value[0]);
+    return 0;
+}
 
-    join_key(buf, sizeof buf, file, off, alg);
-    v = g_hash_table_lookup(cache->table, buf);
-    if (v == NULL) {
-        return FALSE;
+static int
+get_hash_callback(void *para, int n_column, char **column_value, char **column_name) {
+    hash_t *hp = (hash_t *) para;
+    if (column_value[0] != NULL) {
+        *hp = strtoull(column_value[0], NULL, 10);
     }
-    return TRUE;
+    return 0;
+}
+
+static int
+get_hash_array_callback(void *para, int n_column, char **column_value, char **column_name) {
+    hash_t hash;
+    hash_array_t *hashArray = (hash_array_t *) para;
+    if (column_value[0] != NULL) {
+        hash = strtoull(column_value[0], NULL, 10);
+        hash_array_append(hashArray, &hash);
+    }
+    return 0;
+}
+
+static int
+cache_get_media_id(cache_t *cache, const gchar *file) {
+    int media_id;
+    gboolean ret;
+
+    media_id = -1;
+
+    ret = cache_exec(cache, get_id_callback, &media_id,
+                     "select id from media where path='%s';", file);
+    g_return_val_if_fail(ret, -1);
+
+    if (media_id == -1) {
+        GStatBuf buf[1];
+        if (g_stat(file, buf) != 0) {
+            g_warning("stat error: %s", strerror(errno));
+            return -1;
+        }
+
+#if WIN32
+        ret = cache_exec (
+            cache, NULL, NULL,
+            "insert into media(path, size, mtime) values('%s', %ld, %ld);",
+            file, buf->st_size, buf->st_mtime);
+#else
+        ret = cache_exec(cache, NULL, NULL,
+                         "insert into media(path, size, mtime) values('%s', %ld, %ld);",
+                         file, buf->st_size, buf->st_mtim.tv_sec);
+#endif
+        g_return_val_if_fail (ret, -1);
+    }
+
+    ret = cache_exec(cache, get_id_callback, &media_id,
+                     "select id from media where path='%s';", file);
+    g_return_val_if_fail(ret, -1);
+
+    return media_id;
 }
 
 gboolean
 cache_get(cache_t *cache, const gchar *file, float off, int alg, hash_t *hp) {
-    struct cache_value *value;
+    int media_id;
     gboolean ret;
 
-    value = g_hash_table_lookup(cache->table, file);
-    if (value == NULL) {
-        return FALSE;
-    }
+    media_id = cache_get_media_id(cache, file);
+    g_return_val_if_fail(media_id != -1, FALSE);
 
-    ret = cache_value_get(value, off, alg, hp);
-    return ret;
+    *hp = 0;
+    ret = cache_exec(cache, get_hash_callback, hp,
+                     "select hash from hash where offset=%f and alg=%d and media_id=%d",
+                     off, alg, media_id);
+    g_return_val_if_fail (ret, FALSE);
+
+    return *hp != 0;
 }
 
 gboolean
 cache_set(cache_t *cache, const gchar *file, float off, int alg, hash_t h) {
-    struct cache_value *value;
+    int media_id;
     gboolean ret;
 
-    value = g_hash_table_lookup(cache->table, file);
-    if (value == NULL) {
-        value = cache_value_new(cache, file);
-        if (value) {
-            g_hash_table_insert(cache->table, value->file, value);
-        }
-    }
+    media_id = cache_get_media_id(cache, file);
+    g_return_val_if_fail(media_id != -1, FALSE);
 
-    g_return_val_if_fail (value, FALSE);
-
-    ret = cache_value_set(value, off, alg, h);
+    ret = cache_exec(cache, NULL, NULL,
+                     "insert into hash(media_id, offset, alg, hash) values(%d, %f, %d, '%lld')",
+                     media_id, off, alg, h);
     g_return_val_if_fail (ret, FALSE);
 
     return TRUE;
 }
 
 gboolean
-cache_remove(cache_t *cache, const gchar *file) {
-    g_hash_table_remove(cache->table, file);
+cache_gets(cache_t *cache, const gchar *file, int alg, hash_array_t **pHashArray) {
+    int media_id;
+    gboolean ret;
+
+    media_id = cache_get_media_id(cache, file);
+    g_return_val_if_fail(media_id != -1, FALSE);
+
+    *pHashArray = hash_array_new();
+    g_return_val_if_fail(*pHashArray, FALSE);
+
+    ret = cache_exec(cache, get_hash_array_callback, *pHashArray,
+                     "select hash from hash where alg = %d, media_id = %d",
+                     alg, media_id);
+    g_return_val_if_fail (ret, FALSE);
+
     return TRUE;
 }
 
 gboolean
-cache_save(cache_t *cache, const gchar *file) {
-    FILE *fp;
-    char *localfile;
-    char *dirname;
+cache_sets(cache_t *cache, const gchar *file, int alg, hash_array_t *hashArray) {
+    int media_id, i;
+    hash_t *hash;
+    gboolean ret;
 
-    if (file == NULL) {
-        file = cache->file;
-    }
+    media_id = cache_get_media_id(cache, file);
+    g_return_val_if_fail(media_id != -1, FALSE);
 
-    localfile = g_locale_from_utf8(file, -1, NULL, NULL, NULL);
-    g_return_val_if_fail (localfile, FALSE);
-
-    dirname = g_path_get_dirname(file);
-    if (dirname) {
-        g_mkdir_with_parents(dirname, 0755);
-        g_free(dirname);
-    }
-
-    fp = fopen(localfile, "wb");
-    if (fp == NULL) {
-        g_warning ("Open cache file: %s failed: %s", file, strerror(errno));
-        g_free(localfile);
-        return FALSE;
-    }
-
-    fprintf(fp, "ver:%s-%s-%s\n", PROJECT_MAJOR, PROJECT_MINOR, PROJECT_PATCH);
-
-    g_hash_table_foreach(cache->table, (GHFunc) (write_hash), fp);
-
-    fclose(fp);
-
-    g_free(localfile);
-
-    return TRUE;
-}
-
-static gboolean
-write_hash(guint k, struct cache_value *value, FILE *fp) {
-    size_t i;
-    struct cache_value_node *n;
-    char key[PATH_MAX];
-
-    for (i = 0; i < value->hashs->len; ++i) {
-        n = g_ptr_array_index (value->hashs, i);
-        join_key(key, sizeof key, value->file, n->offset, n->alg);
-        fprintf(fp, "%s"FDUPVES_HASH_SEPS"%llu\n", key, n->hash);
+    for (i = 0; i < hash_array_size(hashArray); ++i) {
+        hash = hash_array_index(hashArray, i);
+        ret = cache_exec(cache, NULL, NULL,
+                         "insert into hash(media_id, offset, alg, hash) values(%d, %f, %d, '%lld')",
+                         media_id, 0.f, alg, *hash);
+        g_return_val_if_fail (ret, FALSE);
     }
 
     return TRUE;
 }
 
-static gboolean
-read_hash(char *file, float *off, int *alg, hash_t *h, FILE *fp) {
-    char buf[PATH_MAX * 2], algs[0x10], *p;
-    size_t i;
+gboolean
+cache_remove(cache_t *cache, const gchar *file) {
+    int media_id;
 
-    if (fgets(buf, sizeof buf, fp) == NULL) {
-        return FALSE;
-    }
+    media_id = cache_get_media_id(cache, file);
+    g_return_val_if_fail (media_id != -1, FALSE);
 
-    p = strstr(buf, FDUPVES_HASH_SEPS);
-    if (p == NULL) {
-        return FALSE;
-    }
+    cache_exec(cache, NULL, NULL,
+               "delete from hash where media_id=%d;",
+               media_id);
 
-    *h = strtouq(p + 4, NULL, 10);
-
-    *p = '\0';
-    split_key(buf, file, off, algs);
-
-    for (i = 0; i < FDUPVES_HASH_ALGS_CNT; ++i) {
-        if (strcmp(algs, hash_phrase[i]) == 0) {
-            *alg = i;
-            break;
-        }
-    }
+    cache_exec(cache, NULL, NULL,
+               "delete from media where id=%d;",
+               media_id);
 
     return TRUE;
-}
-
-static struct cache_value *
-cache_value_new(cache_t *cache, const char *file) {
-    struct cache_value *value;
-
-    value = g_malloc(sizeof(struct cache_value));
-    g_return_val_if_fail (value, NULL);
-
-    value->cache = cache;
-    value->file = g_string_chunk_insert_const(cache->chunk, file);
-    value->hashs = g_ptr_array_new_with_free_func(g_free);
-
-    return value;
-}
-
-static gboolean
-cache_value_set(struct cache_value *value, float offset, int alg, hash_t h) {
-    size_t i;
-    struct cache_value_node *n;
-
-    for (i = 0; i < value->hashs->len; ++i) {
-        n = g_ptr_array_index (value->hashs, i);
-        if ((n->offset - offset > -0.1
-             && n->offset - offset < 0.1)
-            && n->alg == alg) {
-            n->hash = h;
-            return TRUE;
-        }
-    }
-
-    n = g_malloc(sizeof(struct cache_value_node));
-    g_return_val_if_fail (n, FALSE);
-
-    n->offset = offset;
-    n->alg = alg;
-    n->hash = h;
-    g_ptr_array_add(value->hashs, n);
-
-    return TRUE;
-}
-
-static gboolean
-cache_value_get(struct cache_value *value, float offset, int alg, hash_t *hp) {
-    size_t i;
-    struct cache_value_node *n;
-
-    for (i = 0; i < value->hashs->len; ++i) {
-        n = g_ptr_array_index (value->hashs, i);
-        if ((n->offset - offset > -0.1
-             && n->offset - offset < 0.1)
-            && n->alg == alg) {
-            *hp = n->hash;
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
-
-static void
-cache_value_free(struct cache_value *value) {
-    g_ptr_array_free(value->hashs, TRUE);
-    g_free(value);
 }

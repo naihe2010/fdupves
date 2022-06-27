@@ -27,23 +27,8 @@
 #ifndef _FDUPVES_AUDIO_H_
 #define _FDUPVES_AUDIO_H_
 
-#ifndef AUDIO_HASH_RATE
-#define AUDIO_HASH_RATE     5512
-#endif
-
-#ifndef AUDIO_HASH_FRAME
-#define AUDIO_HASH_FRAME    2048
-#endif
-
-#ifndef AUDIO_HASH_OVERLAP
-#define AUDIO_HASH_OVERLAP  2048
-#endif
-
-#ifndef AUDIO_HASH_LENGTH
-#define AUDIO_HASH_LENGTH   64
-#endif
-
-#define AUDIO_HASH_COUNT   (AUDIO_HASH_OVERLAP * (AUDIO_HASH_LENGTH - 1) + AUDIO_HASH_FRAME)
+#include <stdio.h>
+#include "hash.h"
 
 typedef struct {
     /* filename */
@@ -68,12 +53,19 @@ void audio_info_free(audio_info *info);
 
 int audio_get_length(const char *file);
 
-int audio_time_screenshot(const char *file, float offset,
-                          int samples,
-                          short *buffer, int buf_len);
+int audio_extract(const char *file,
+                  float offset, float length,
+                  int ar,
+                  short **pBuffer, int *buf_len);
 
-int audio_time_screenshot_file(const char *file, float offset,
-                               int samples,
-                               const char *out_file);
+int audio_extract_to_file(const char *file,
+                          float offset, float length,
+                          int ar,
+                          FILE *fp);
+
+int audio_extract_to_wav(const char *file,
+                         float offset, float length,
+                         int ar,
+                         const char *out_wav);
 
 #endif

@@ -30,6 +30,15 @@
 #include <glib.h>
 
 typedef enum {
+    FD_COMPARE_ALL = 0,
+    FD_COMPARE_TOP,
+    FD_COMPARE_BOTTOM,
+    FD_COMPARE_LEFT,
+    FD_COMPARE_RIGHT,
+    FD_COMPARE_AUDIO_IN_VIDEO
+} compare_type;
+
+typedef enum {
     FIND_IMAGE,
     FIND_VIDEO,
     FIND_AUDIO,

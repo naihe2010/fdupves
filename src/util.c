@@ -143,12 +143,5 @@ is_audio(const gchar *path) {
         }
     }
 
-    for (i = 0; g_ini->video_suffix[i]; ++i) {
-        s = g_ini->video_suffix[i];
-        if (g_ascii_strcasecmp(p, s) == 0) {
-            return 1;
-        }
-    }
-
     return 0;
 }

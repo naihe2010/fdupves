@@ -32,6 +32,7 @@ ENDIF (WIN32)
 
 INCLUDE_DIRECTORIES(${GTK_INCLUDE_DIRS}
         ${FFMPEG_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/sqlite3
         )
 LINK_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}
         ${GTK_LIBRARY_DIRS}
@@ -46,7 +47,7 @@ IF (WIN32)
             -DUINT64_C=
             )
 ELSE (WIN32)
-    SET(CMAKE_C_FLAGS "-Wall -D_FILE_OFFSET_BITS=64")
+    SET(CMAKE_C_FLAGS "-Wall -D_FILE_OFFSET_BITS=64 -Wno-deprecated-declarations")
     SET(REQ_LIBRARIES -lm)
 
     OPTION(FDUPVES_ENABLE_DEBUG "If build binary with debug infomations." OFF)
@@ -77,12 +78,16 @@ ADD_SUBDIRECTORY(src)
 FIND_PACKAGE(Gettext)
 IF (GETTEXT_FOUND)
     ADD_SUBDIRECTORY(po)
-    #ADD_DEPENDENCIES(fdupves translate)
+    IF (!WIN32)
+        ADD_DEPENDENCIES(fdupves translate)
+    ENDIF ()
 ELSE (GETTEXT_FOUND)
     INSTALL(FILES po/zh_CN.gmo
             DESTINATION share/locale/zh_CN/LC_MESSAGES
             RENAME fdupves.mo)
 ENDIF (GETTEXT_FOUND)
+
+ADD_EXECUTABLE(sqlite3 sqlite3/sqlite3.h sqlite3/sqlite3.c sqlite3/shell.c)
 
 INSTALL(DIRECTORY icons
         DESTINATION share/fdupves)
