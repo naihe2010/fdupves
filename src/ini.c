@@ -39,7 +39,7 @@ ini_new() {
     ini_t *ini;
 
     const gchar *const isuffix = "bmp,gif,jpeg,jpg,jpe,png,pcx,pnm,tif,tga,xpm,ico,cur,ani";
-    const gchar *const vsuffix = "avi,mp4,mpg,rmvb,rm,mov,mkv,m4v,mpg,mpeg,vob,asf,wmv,3gp,flv,mod,swf,mts,m2ts";
+    const gchar *const vsuffix = "avi,mp4,mpg,rmvb,rm,mov,mkv,m4v,mpg,mpeg,vob,asf,wmv,3gp,flv,mod,swf,mts,m2ts,ts";
     const gchar *const asuffix = "mp3,wma,wav,ogg,amr,m4a,mka,aac";
 
     ini = g_malloc0(sizeof(ini_t));
