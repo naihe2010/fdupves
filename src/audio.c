@@ -26,6 +26,7 @@
 
 #include "audio.h"
 #include "util.h"
+#include "../fingerprint/fingerprint.h"
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -87,7 +88,7 @@ audio_info_free(audio_info *info) {
     g_free(info);
 }
 
-int
+float
 audio_get_length(const char *file) {
     audio_info *info;
     int length;
@@ -95,7 +96,7 @@ audio_get_length(const char *file) {
     length = 0;
     info = audio_get_info(file);
     if (info) {
-        length = (int) info->length;
+        length = info->length;
         audio_info_free(info);
     }
 
@@ -298,23 +299,6 @@ audio_extract(const char *file,
     return bytes;
 }
 
-int
-audio_extract_to_file(const char *file,
-                      float offset, float length,
-                      int ar,
-                      FILE *fp) {
-    short *buf;
-    int samples, len;
-
-    len = audio_extract(file, offset, length, ar, &buf, &samples);
-    g_return_val_if_fail(len > 0, -1);
-
-    fwrite(buf, sizeof(short), samples, fp);
-    g_free(buf);
-
-    return 0;
-}
-
 struct wav_header {
     char riffChunkId[4];
     int32_t riffChunkSize;
@@ -379,5 +363,50 @@ int audio_extract_to_wav(const char *file,
     fclose(fp);
 
     return 0;
+}
+
+static int
+audio_hash_peak_append(const char *hash, int offset, void *ptr)
+{
+    hash_array_t *array = (hash_array_t *) ptr;
+    audio_peak_hash peak;
+
+    snprintf (peak.hash, sizeof peak.hash, "%s", hash);
+    peak.offset = offset;
+    hash_array_append(array, &peak, sizeof (peak));
+
+    return 0;
+}
+
+hash_array_t *
+audio_fingerprint(const char *file) {
+    int samples, memlen, i;
+    float medialen;
+    short *buf;
+    float *datas;
+    hash_array_t *array;
+
+    medialen = audio_get_length(file);
+    g_return_val_if_fail(medialen > 0, NULL);
+
+    memlen = audio_extract(file, 0.f, medialen, 22050, &buf, &samples);
+    g_return_val_if_fail(memlen > 0, NULL);
+
+    datas = g_new(float, samples);
+    if (datas == NULL) {
+        g_free(buf);
+        return NULL;
+    }
+
+    for (i = 0; i < samples; ++i)
+        datas[i] = (float) (buf[i]);
+
+    array = hash_array_new();
+    if (array == NULL) {
+        g_free (buf);
+        g_free (datas);
+    }
+    fingerprint(datas, samples, 22050, audio_hash_peak_append, array);
+    return array;
 }
 

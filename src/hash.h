@@ -63,9 +63,9 @@ void hash_array_free(hash_array_t *hashArray);
 
 gsize hash_array_size(hash_array_t *hashArray);
 
-hash_t *hash_array_index(hash_array_t *hashArray, int index);
+void *hash_array_index(hash_array_t *hashArray, int index);
 
-void hash_array_append(hash_array_t *hashArray, hash_t *hash);
+void hash_array_append(hash_array_t *hashArray, void *hash, size_t size);
 
 gsize hash_array_compare(hash_array_t *hashArray1, hash_array_t *hashArray2);
 

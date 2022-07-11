@@ -41,31 +41,37 @@ typedef struct {
     const char *format;
 
     /* Duration */
-    double length;
+    float length;
 
     /* Size */
     int size[2];
 } audio_info;
 
+#ifndef AUDIO_PEAK_HASH_LEN
+#define AUDIO_PEAK_HASH_LEN 12
+#endif
+
+typedef struct {
+    char hash[AUDIO_PEAK_HASH_LEN];
+    int offset;
+} audio_peak_hash;
+
 audio_info *audio_get_info(const char *file);
 
 void audio_info_free(audio_info *info);
 
-int audio_get_length(const char *file);
+float audio_get_length(const char *file);
 
 int audio_extract(const char *file,
                   float offset, float length,
                   int ar,
                   short **pBuffer, int *buf_len);
 
-int audio_extract_to_file(const char *file,
-                          float offset, float length,
-                          int ar,
-                          FILE *fp);
-
 int audio_extract_to_wav(const char *file,
                          float offset, float length,
                          int ar,
                          const char *out_wav);
+
+hash_array_t * audio_fingerprint(const char *file);
 
 #endif

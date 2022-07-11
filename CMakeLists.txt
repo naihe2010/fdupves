@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
 
-PROJECT(fdupves C)
+PROJECT(fdupves C CXX)
 
 SET(PROJECT_MAJOR "3")
 SET(PROJECT_MINOR "0")
@@ -28,15 +28,18 @@ IF (WIN32)
     SET(FFMPEG_LIBRARIES avformat.lib avcodec.lib avutil.lib swscale.lib swresample.lib)
 ELSE (WIN32)
     PKG_CHECK_MODULES(FFMPEG libavformat libavcodec libavutil libswscale libswresample REQUIRED)
+    PKG_CHECK_MODULES(OPENCV opencv REQUIRED)
 ENDIF (WIN32)
 
 INCLUDE_DIRECTORIES(${GTK_INCLUDE_DIRS}
         ${FFMPEG_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}/sqlite3
+        ${OPENCV_INCLUDE_DIRS}
         )
 LINK_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}
         ${GTK_LIBRARY_DIRS}
         ${FFMPEG_LIBRARY_DIRS}
+        ${OPENCV_LIBRARY_DIRS}
         )
 
 IF (WIN32)

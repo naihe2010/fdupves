@@ -11,6 +11,7 @@ SET(HEADERS
         image.h
         cache.h
         ../sqlite3/sqlite3.h
+        ../fingerprint/fingerprint.h
         )
 
 SET(SOURCES
@@ -24,8 +25,8 @@ SET(SOURCES
         audio.c
         image.c
         cache.c
-        main.c
         ../sqlite3/sqlite3.c
+        ../fingerprint/fingerprint.cpp
         )
 
 IF (WIN32)
@@ -47,13 +48,15 @@ TARGET_LINK_LIBRARIES(fdupves
         ${REQ_LIBRARIES}
         ${GTK_LIBRARIES}
         ${FFMPEG_LIBRARIES}
+        ${OPENCV_LIBRARIES}
         )
 
-ADD_EXECUTABLE(test_audio audio.c test_audio.c)
-TARGET_LINK_LIBRARIES(test_audio
+ADD_EXECUTABLE(test_mod ${SOURCES} test_mod.c)
+TARGET_LINK_LIBRARIES(test_mod
         ${REQ_LIBRARIES}
         ${GTK_LIBRARIES}
-        ${FFMPEG_LIBRARIES})
+        ${FFMPEG_LIBRARIES}
+        ${OPENCV_LIBRARIES})
 
 INSTALL(TARGETS fdupves DESTINATION bin)
 IF (WIN32)

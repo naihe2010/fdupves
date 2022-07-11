@@ -143,7 +143,7 @@ get_hash_array_callback(void *para, int n_column, char **column_value, char **co
     hash_array_t *hashArray = (hash_array_t *) para;
     if (column_value[0] != NULL) {
         hash = strtoull(column_value[0], NULL, 10);
-        hash_array_append(hashArray, &hash);
+        hash_array_append(hashArray, &hash, sizeof (hash_t));
     }
     return 0;
 }

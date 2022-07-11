@@ -230,8 +230,6 @@ video_time_hash(const char *file, float offset) {
 hash_array_t *
 audio_hashes(const char *path) {
     hash_array_t *hashArray;
-    gchar *buffer;
-    gsize len;
 
     if (g_cache) {
         if (cache_gets(g_cache, path, 0, &hashArray)) {
@@ -239,19 +237,7 @@ audio_hashes(const char *path) {
         }
     }
 
-    len = FDUPVES_HASH_LEN * FDUPVES_HASH_LEN * 3;
-    buffer = g_malloc(len);
-    g_return_val_if_fail (buffer, 0);
-
-    // TODO audio hashes
-    /*
-    video_time_screenshot(file, offset,
-                          FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
-                          buffer, len);
-
-    h = image_buffer_hash(buffer, len);
-    g_free(buffer);
-     */
+    hashArray = audio_fingerprint(path);
 
     if (g_cache) {
         if (hashArray) {
@@ -289,17 +275,17 @@ hash_array_size(hash_array_t *hashArray) {
     return hashArray->array->len;
 }
 
-hash_t *
+void *
 hash_array_index(hash_array_t *hashArray, int index) {
-    hash_t *hashp = g_ptr_array_index(hashArray->array, index);
+    void *hashp = g_ptr_array_index(hashArray->array, index);
     return hashp;
 }
 
 void
-hash_array_append(hash_array_t *hashArray, hash_t *hash) {
-    hash_t *nhash = g_new (hash_t, 1);
+hash_array_append(hash_array_t *hashArray, void *hash, size_t size) {
+    hash_t *nhash = g_malloc (size);
     g_return_if_fail (nhash);
-    *nhash = *hash;
+    memcpy (nhash, hash, size);
     g_ptr_array_add(hashArray->array, nhash);
 }
 
