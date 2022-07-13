@@ -7,7 +7,7 @@ extern "C" {
 typedef int (*fingerprint_callback)(const char *, int, void *);
 typedef void *fingerprint_arg;
 
-void fingerprint(float *data, int data_size, float fs, fingerprint_callback cb, fingerprint_arg arg);
+void fingerprint(float *data, int data_size, float fs, int amp_min, fingerprint_callback cb, fingerprint_arg arg);
 
 int test_fingerprint(const char *);
 

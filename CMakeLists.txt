@@ -20,12 +20,18 @@ ADD_DEFINITIONS(
 FIND_PACKAGE(PkgConfig)
 PKG_CHECK_MODULES(GTK gtk+-3.0 REQUIRED)
 IF (WIN32)
-    SET(FFMPEG_DIR "C:\\ffmpeg"
+    SET(FFMPEG_DIR "C:/ffmpeg"
             CACHE PATH
             "Ffmpeg library dir")
     SET(FFMPEG_INCLUDE_DIRS ${FFMPEG_DIR}/include)
     SET(FFMPEG_LIBRARY_DIRS ${FFMPEG_DIR}/lib)
     SET(FFMPEG_LIBRARIES avformat.lib avcodec.lib avutil.lib swscale.lib swresample.lib)
+    SET(OPENCV_DIR "C:/opencv/build"
+            CACHE PATH
+            "opencv library dir")
+    SET(OPENCV_INCLUDE_DIRS ${OPENCV_DIR}/include)
+    SET(OPENCV_LIBRARY_DIRS ${OPENCV_DIR}/x64/vc15/lib)
+    SET(OPENCV_LIBRARIES opencv_world460.lib)
 ELSE (WIN32)
     PKG_CHECK_MODULES(FFMPEG libavformat libavcodec libavutil libswscale libswresample REQUIRED)
     PKG_CHECK_MODULES(OPENCV opencv REQUIRED)

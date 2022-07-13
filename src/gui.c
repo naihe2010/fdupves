@@ -162,6 +162,14 @@ static void toolbar_new(gui_t *);
 
 static void mainframe_new(gui_t *);
 
+static GtkWidget *dir_list_new(gui_t *);
+
+static GtkWidget *find_attr_new(gui_t *);
+
+static GtkWidget *res_tree_new(gui_t *);
+
+static GtkWidget *log_view_new(gui_t *);
+
 static void progressbar_new(gui_t *);
 
 static void gui_add_cb(GtkWidget *, gui_t *);
@@ -189,6 +197,10 @@ static void gui_destroy_cb(GtkWidget *, GdkEvent *, gui_t *);
 static void gui_add_dir(gui_t *, const gchar *);
 
 static void gui_find_thread(gui_t *);
+
+static void gui_save_directories(gui_t *);
+
+static void gui_load_directories(gui_t *);
 
 static gboolean dir_find_item(GtkTreeModel *,
                               GtkTreePath *,
@@ -295,8 +307,12 @@ gui_init(int argc, char *argv[]) {
 
     gtk_widget_show_all(gui->widget);
 
-    for (i = 1; i < argc; ++i) {
-        gui_add_dir(gui, argv[i]);
+    if (argc > 1) {
+        for (i = 1; i < argc; ++i) {
+            gui_add_dir(gui, argv[i]);
+        }
+    } else {
+        gui_load_directories(gui);
     }
 
     return TRUE;
@@ -381,6 +397,26 @@ toolbar_new(gui_t *gui) {
     gtk_toolbar_insert(GTK_TOOLBAR (toolbar), but, -1);
 }
 
+static gint gui_log_format(gchar *output, size_t outsize, const gchar *message) {
+    GDateTime *datetime;
+    gchar *dtstr;
+    int retsize;
+
+    datetime = g_date_time_new_now_local();
+    if (datetime == NULL)
+        return g_snprintf(output, outsize, "%s", message);
+
+    dtstr = g_date_time_format(datetime, "%Y-%m-%dT%H:%M:%S.%f");
+    g_date_time_unref(datetime);
+    if (dtstr == NULL)
+        return g_snprintf(output, outsize, "%s", message);
+
+    retsize = g_snprintf(output, outsize, "%s %s", dtstr, message);
+    g_free(dtstr);
+
+    return retsize;
+}
+
 static void
 gui_log(const gchar *log_domain,
         GLogLevelFlags log_level,
@@ -389,12 +425,15 @@ gui_log(const gchar *log_domain,
     GtkTreeIter itr[1];
     GtkTreePath *path;
     gui_t *gui;
+    gchar fmt_message[1024];
+
+    gui_log_format(fmt_message, sizeof fmt_message, message);
 
     gui = (gui_t *) user_data;
 
     gdk_threads_enter();
     gtk_list_store_append(gui->logliststore, itr);
-    gtk_list_store_set(gui->logliststore, itr, 0, message, -1);
+    gtk_list_store_set(gui->logliststore, itr, 0, fmt_message, -1);
 
     path = gtk_tree_model_get_path(GTK_TREE_MODEL (gui->logliststore),
                                    itr);
@@ -438,21 +477,41 @@ gui_compareareacb(GtkWidget *combo, gui_t *gui) {
 }
 
 static void
-mainframe_new(gui_t *gui) {
-    GtkWidget *hpaned, *vpaned, *vbox, *hbox, *dirview, *win;
-    GtkWidget *typebox, *typeibut, *typevbut;
-    GtkWidget *entry, *combo, *comparearea;
-    GtkTreeViewColumn *column;
-    GtkCellRenderer *renderer;
+gui_filtertimeratecb(GtkWidget *combo, gui_t *gui) {
+    g_ini->filter_time_rate = gtk_combo_box_get_active(GTK_COMBO_BOX (combo));
+}
 
-    hpaned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-    gtk_box_pack_start(GTK_BOX (gui->mainvbox), hpaned, TRUE, TRUE, 2);
+static void
+mainframe_new(gui_t *gui) {
+    GtkWidget *hpaned, *vpaned, *vbox, *win;
 
     vpaned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
-    gtk_paned_add1(GTK_PANED (hpaned), vpaned);
+    gtk_box_pack_start(GTK_BOX (gui->mainvbox), vpaned, TRUE, TRUE, 2);
+
+    hpaned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_paned_add1(GTK_PANED (vpaned), hpaned);
 
     vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    gtk_paned_add1(GTK_PANED (vpaned), vbox);
+    gtk_paned_add1(GTK_PANED (hpaned), vbox);
+
+    win = dir_list_new(gui);
+    gtk_box_pack_start(GTK_BOX (vbox), win, TRUE, TRUE, 2);
+
+    win = find_attr_new(gui);
+    gtk_box_pack_end(GTK_BOX (vbox), win, FALSE, FALSE, 2);
+
+    win = res_tree_new(gui);
+    gtk_paned_add2(GTK_PANED(hpaned), win);
+
+    win = log_view_new(gui);
+    gtk_paned_add2(GTK_PANED (vpaned), win);
+}
+
+static GtkWidget *
+dir_list_new(gui_t *gui) {
+    GtkWidget *win, *dirview;
+    GtkCellRenderer *renderer;
+    GtkTreeViewColumn *column;
 
     /* dir list win */
     win = gtk_scrolled_window_new(NULL, NULL);
@@ -464,7 +523,6 @@ mainframe_new(gui_t *gui) {
     dirview = gtk_tree_view_new_with_model(GTK_TREE_MODEL (gui->dirliststore));
     gtk_container_add(GTK_CONTAINER (win), dirview);
     gtk_widget_set_size_request(dirview, 300, 200);
-    gtk_box_pack_start(GTK_BOX (vbox), win, TRUE, TRUE, 2);
 
     renderer = gtk_cell_renderer_text_new();
     column = gtk_tree_view_column_new_with_attributes
@@ -476,8 +534,19 @@ mainframe_new(gui_t *gui) {
 
     g_signal_connect (G_OBJECT(dirview), "row-activated", G_CALLBACK(dirlist_onactivated), gui);
 
+    return win;
+}
+
+static GtkWidget *
+find_attr_new(gui_t *gui) {
+    GtkWidget *typebox, *vbox;
+    GtkWidget *comparearea, *filtertimerate;
+    GtkWidget *typeibut, *typevbut, *typeabut;
+
+    vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+
     typebox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_end(GTK_BOX (vbox), typebox, FALSE, FALSE, 2);
+    gtk_box_pack_start(GTK_BOX (vbox), typebox, FALSE, FALSE, 2);
 
     typeibut = gtk_check_button_new_with_label(_ ("Image"));
     gtk_box_pack_start(GTK_BOX (typebox), typeibut, FALSE, FALSE, 2);
@@ -489,13 +558,13 @@ mainframe_new(gui_t *gui) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON (typevbut), g_ini->proc_video);
     g_signal_connect (G_OBJECT(typevbut), "toggled", G_CALLBACK(gui_vbutcb), gui);
 
-    typevbut = gtk_check_button_new_with_label(_ ("Audio"));
-    gtk_box_pack_start(GTK_BOX (typebox), typevbut, FALSE, FALSE, 2);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON (typevbut), g_ini->proc_audio);
-    g_signal_connect (G_OBJECT(typevbut), "toggled", G_CALLBACK(gui_abutcb), gui);
+    typeabut = gtk_check_button_new_with_label(_ ("Audio"));
+    gtk_box_pack_start(GTK_BOX (typebox), typeabut, FALSE, FALSE, 2);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON (typeabut), g_ini->proc_audio);
+    g_signal_connect (G_OBJECT(typeabut), "toggled", G_CALLBACK(gui_abutcb), gui);
 
     typebox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_end(GTK_BOX (vbox), typebox, FALSE, FALSE, 2);
+    gtk_box_pack_start(GTK_BOX (vbox), typebox, FALSE, FALSE, 2);
 
     comparearea = gtk_combo_box_text_new();
     gtk_box_pack_start(GTK_BOX (typebox), comparearea, FALSE, FALSE, 2);
@@ -509,31 +578,34 @@ mainframe_new(gui_t *gui) {
     g_signal_connect (G_OBJECT(comparearea), "changed", G_CALLBACK(gui_compareareacb), gui);
     gtk_combo_box_set_active(GTK_COMBO_BOX (comparearea), g_ini->compare_area);
 
-    /* log win */
-    win = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW (win),
-                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW (win),
-                                        GTK_SHADOW_IN);
-    gui->logliststore = gtk_list_store_new(1, G_TYPE_STRING);
-    gui->logtree = gtk_tree_view_new_with_model(GTK_TREE_MODEL (gui->logliststore));
-    gtk_container_add(GTK_CONTAINER (win), gui->logtree);
-    gtk_paned_add2(GTK_PANED (vpaned), win);
+    filtertimerate = gtk_combo_box_text_new();
+    gtk_box_pack_start(GTK_BOX (vbox), filtertimerate, FALSE, FALSE, 2);
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (filtertimerate), FD_FILTER_TIME_RATE_0, _("no time limit"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (filtertimerate), FD_FILTER_TIME_RATE_1, _("time limit in 1"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (filtertimerate), FD_FILTER_TIME_RATE_2, _("time limit in 1/2"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (filtertimerate), FD_FILTER_TIME_RATE_10,
+                                   _("time limit int 1/10"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (filtertimerate), FD_FILTER_TIME_RATE_20,
+                                   _("time limit in 1/20"));
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT (filtertimerate), FD_FILTER_TIME_RATE_100,
+                                   _("time limit in 1/100"));
+    g_signal_connect (G_OBJECT(filtertimerate), "changed", G_CALLBACK(gui_filtertimeratecb), gui);
+    gtk_combo_box_set_active(GTK_COMBO_BOX (filtertimerate), g_ini->filter_time_rate);
 
-    renderer = gtk_cell_renderer_text_new();
-    column = gtk_tree_view_column_new_with_attributes
-            (_ ("Message"),
-             renderer, "text", 0,
-             NULL);
-    gtk_tree_view_column_set_resizable(column, TRUE);
-    gtk_tree_view_append_column(GTK_TREE_VIEW (gui->logtree), column);
+    return vbox;
+}
 
-    g_log_set_handler(NULL, G_LOG_LEVEL_MASK,
-                      gui_log, gui);
+static GtkWidget *
+res_tree_new(gui_t *gui) {
+    GtkWidget *win, *vbox, *hbox, *scrwin;
+    GtkWidget *combo, *entry;
+    GtkCellRenderer *renderer;
+    GtkTreeViewColumn *column;
 
-    /* result area */
+    win = gtk_frame_new(_("Result"));
+
     vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    gtk_paned_add2(GTK_PANED (hpaned), vbox);
+    gtk_container_add(GTK_CONTAINER (win), vbox);
 
     /* result filter */
     hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
@@ -569,11 +641,11 @@ mainframe_new(gui_t *gui) {
                       G_CALLBACK(restree_selcombo_changed), gui);
 
     /* result tree */
-    win = gtk_scrolled_window_new(NULL, NULL);
-    gtk_box_pack_start(GTK_BOX (vbox), win, TRUE, TRUE, 2);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW (win),
+    scrwin = gtk_scrolled_window_new(NULL, NULL);
+    gtk_box_pack_start(GTK_BOX (vbox), scrwin, TRUE, TRUE, 2);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW (scrwin),
                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW (win),
+    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW (scrwin),
                                         GTK_SHADOW_IN);
     gui->restreestore = gtk_tree_store_new(6,
                                            G_TYPE_STRING,
@@ -584,7 +656,7 @@ mainframe_new(gui_t *gui) {
                                            G_TYPE_POINTER
     );
     gui->restree = gtk_tree_view_new_with_model(GTK_TREE_MODEL (gui->restreestore));
-    gtk_container_add(GTK_CONTAINER (win), gui->restree);
+    gtk_container_add(GTK_CONTAINER (scrwin), gui->restree);
 
     /* path */
     renderer = gtk_cell_renderer_text_new();
@@ -636,6 +708,37 @@ mainframe_new(gui_t *gui) {
     gtk_tree_selection_set_mode(gui->resselect, GTK_SELECTION_MULTIPLE);
     g_signal_connect (G_OBJECT(gui->resselect), "changed",
                       G_CALLBACK(restreesel_onchanged), gui);
+
+    return win;
+}
+
+static GtkWidget *
+log_view_new(gui_t *gui) {
+    GtkWidget *win;
+    GtkCellRenderer *renderer;
+    GtkTreeViewColumn *column;
+
+    win = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW (win),
+                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW (win),
+                                        GTK_SHADOW_IN);
+    gui->logliststore = gtk_list_store_new(1, G_TYPE_STRING);
+    gui->logtree = gtk_tree_view_new_with_model(GTK_TREE_MODEL (gui->logliststore));
+    gtk_container_add(GTK_CONTAINER (win), gui->logtree);
+
+    renderer = gtk_cell_renderer_text_new();
+    column = gtk_tree_view_column_new_with_attributes
+            (_ ("Message"),
+             renderer, "text", 0,
+             NULL);
+    gtk_tree_view_column_set_resizable(column, TRUE);
+    gtk_tree_view_append_column(GTK_TREE_VIEW (gui->logtree), column);
+
+    g_log_set_handler(NULL, G_LOG_LEVEL_MASK,
+                      gui_log, gui);
+
+    return win;
 }
 
 static void
@@ -685,6 +788,43 @@ gui_find_cb(GtkWidget *wid, gui_t *gui) {
 
     th = g_thread_try_new("find", (GThreadFunc) gui_find_thread, gui, NULL);
     g_thread_unref(th);
+}
+
+static void
+gui_save_directories(gui_t *gui) {
+    gint count, i;
+    GtkTreeIter itr;
+    gchar *path;
+
+    if (g_ini->directories) {
+        g_strfreev(g_ini->directories);
+        g_ini->directories = NULL;
+        g_ini->directory_count = 0;
+    }
+
+    count = gtk_tree_model_iter_n_children(GTK_TREE_MODEL (gui->dirliststore),
+                                           NULL);
+    if (count <= 0) {
+        return;
+    }
+
+    g_ini->directory_count = count;
+    g_ini->directories = (gchar **) g_new0 (gchar *, count + 1);
+
+    for (i = 0; i < count; ++i) {
+        if (gtk_tree_model_iter_nth_child(GTK_TREE_MODEL (gui->dirliststore), &itr, NULL, i)) {
+            gtk_tree_model_get(GTK_TREE_MODEL (gui->dirliststore), &itr, 0, &path, -1);
+            g_ini->directories[i] = path;
+        }
+    }
+}
+
+static void
+gui_load_directories(gui_t *gui) {
+    int i;
+    for (i = 0; i < g_ini->directory_count; ++i) {
+        gui_add_dir(gui, g_ini->directories[i]);
+    }
 }
 
 static void
@@ -1044,6 +1184,7 @@ gui_destroy_cb(GtkWidget *but, GdkEvent *ev, gui_t *gui) {
 
 static void
 gui_destroy(gui_t *gui) {
+    gui_save_directories(gui);
     ini_save(g_ini, FD_USR_CONF_FILE);
 
     gtk_widget_destroy(gui->widget);
@@ -1634,59 +1775,13 @@ diff_add_video(diff_dialog *dia, const file_node *afn, const file_node *bfn) {
     dia->afn = afn;
     dia->bfn = bfn;
 
-    /* screenshot */
-    dia->container = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_start(GTK_BOX (dia->content), dia->container, TRUE, TRUE, 0);
-
     /* head or tail */
     hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_end(GTK_BOX (dia->content), hbox, FALSE, FALSE, 5);
-
-    headortail = gtk_toggle_button_new_with_label(_ ("From Tail"));
-    gtk_box_pack_start(GTK_BOX (hbox), headortail, FALSE, FALSE, 2);
-    g_signal_connect (G_OBJECT(headortail), "toggled",
-                      G_CALLBACK(diffdia_onheadtail), dia);
-
-    hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_start(GTK_BOX (hbox), hbox2, FALSE, FALSE, 2);
-    label = gtk_label_new(_ ("Compare Count"));
-    gtk_box_pack_start(GTK_BOX (hbox2), label, FALSE, FALSE, 2);
-    entry = gtk_entry_new();
-    gtk_box_pack_end(GTK_BOX (hbox2), entry, FALSE, FALSE, 2);
-    g_signal_connect (G_OBJECT(entry), "changed",
-                      G_CALLBACK(diffdia_onseekchanged), dia);
-
-    dia->butprev = gtk_button_new_with_label(_ ("Previous"));
-    gtk_box_pack_start(GTK_BOX (hbox), dia->butprev, FALSE, FALSE, 2);
-    g_signal_connect (G_OBJECT(dia->butprev), "clicked",
-                      G_CALLBACK(diffdia_onprev), dia);
-    dia->butnext = gtk_button_new_with_label(_ ("Next"));
-    gtk_box_pack_start(GTK_BOX (hbox), dia->butnext, FALSE, FALSE, 2);
-    g_signal_connect (G_OBJECT(dia->butnext), "clicked",
-                      G_CALLBACK(diffdia_onnext), dia);
-
-    g_snprintf(count, sizeof count, "%d", g_ini->compare_count);
-    gtk_entry_set_text(GTK_ENTRY (entry), count);
-    dia->index = 1;
-    diffdia_refresh_video_pic(dia);
-}
-
-static void
-diff_add_audio(diff_dialog *dia, const file_node *afn, const file_node *bfn) {
-    GtkWidget *hbox, *hbox2;
-    GtkWidget *entry, *label, *headortail;
-    gchar count[10];
-
-    dia->afn = afn;
-    dia->bfn = bfn;
+    gtk_box_pack_start(GTK_BOX (dia->content), hbox, FALSE, FALSE, 5);
 
     /* screenshot */
     dia->container = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_start(GTK_BOX (dia->content), dia->container, TRUE, TRUE, 0);
-
-    /* head or tail */
-    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    gtk_box_pack_end(GTK_BOX (dia->content), hbox, FALSE, FALSE, 5);
+    gtk_box_pack_end(GTK_BOX (dia->content), dia->container, TRUE, TRUE, 0);
 
     headortail = gtk_toggle_button_new_with_label(_ ("From Tail"));
     gtk_box_pack_start(GTK_BOX (hbox), headortail, FALSE, FALSE, 2);
@@ -1731,25 +1826,25 @@ diff_dialog_new(gui_t *gui, const file_node *afn, const file_node *bfn) {
     diffdia->gui = gui;
 
     diffdia->dialog = gtk_dialog_new_with_buttons("fdupves diff dialog",
-                                                  GTK_WINDOW (gui->widget),
+                                                  GTK_WINDOW(gui->widget),
                                                   GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
                                                   _("Close"),
                                                   GTK_RESPONSE_CLOSE,
                                                   NULL);
 
-    diffdia->content = gtk_dialog_get_content_area(GTK_DIALOG (diffdia->dialog));
+    diffdia->content = gtk_dialog_get_content_area(GTK_DIALOG(diffdia->dialog));
 
-    g_signal_connect (G_OBJECT(diffdia->dialog), "response",
-                      G_CALLBACK(diffdia_onresponse), diffdia);
-    g_signal_connect (G_OBJECT(diffdia->dialog), "close",
-                      G_CALLBACK(diffdia_onclose), diffdia);
+    g_signal_connect(G_OBJECT(diffdia->dialog), "response",
+                     G_CALLBACK(diffdia_onresponse), diffdia);
+    g_signal_connect(G_OBJECT(diffdia->dialog), "close",
+                     G_CALLBACK(diffdia_onclose), diffdia);
 
     if (afn->type == FD_IMAGE && bfn->type == FD_IMAGE) {
         diff_add_image(diffdia, afn, bfn);
     } else if (afn->type == FD_VIDEO && bfn->type == FD_VIDEO) {
         diff_add_video(diffdia, afn, bfn);
     } else if (afn->type == FD_AUDIO && bfn->type == FD_AUDIO) {
-        diff_add_audio(diffdia, afn, bfn);
+        diff_add_video(diffdia, afn, bfn);
     } else {
         gchar *desc;
         GtkWidget *label;
@@ -1760,11 +1855,11 @@ diff_dialog_new(gui_t *gui, const file_node *afn, const file_node *bfn) {
                                afn->path, bfn->path);
         label = gtk_label_new(desc);
         g_free(desc);
-        gtk_box_pack_start(GTK_BOX (diffdia->content), label, TRUE, FALSE, 2);
+        gtk_box_pack_start(GTK_BOX(diffdia->content), label, TRUE, FALSE, 2);
     }
     gtk_widget_show_all(diffdia->content);
 
-    gtk_dialog_run(GTK_DIALOG (diffdia->dialog));
+    gtk_dialog_run(GTK_DIALOG(diffdia->dialog));
 }
 
 static void
@@ -1794,6 +1889,7 @@ diffdia_onresponse(GtkWidget *dia, gint res, diff_dialog *dialog) {
 static void
 diffdia_onheadtail(GtkToggleButton *but, diff_dialog *dia) {
     dia->from_tail = gtk_toggle_button_get_active(but);
+    diffdia_refresh_video_pic(dia);
 }
 
 static void

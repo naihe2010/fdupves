@@ -232,12 +232,15 @@ audio_hashes(const char *path) {
     hash_array_t *hashArray;
 
     if (g_cache) {
-        if (cache_gets(g_cache, path, 0, &hashArray)) {
+        if (cache_gets(g_cache, path, 0xFFFF, &hashArray)) {
+            g_debug("got %s cached peak hashes: %lu", path, hash_array_size(hashArray));
             return hashArray;
         }
     }
 
+    g_debug("get %s peak hashes ...", path);
     hashArray = audio_fingerprint(path);
+    g_debug("get %s peak hashes: %lu", path, hashArray ? hash_array_size(hashArray) : 0);
 
     if (g_cache) {
         if (hashArray) {
@@ -283,13 +286,9 @@ hash_array_index(hash_array_t *hashArray, int index) {
 
 void
 hash_array_append(hash_array_t *hashArray, void *hash, size_t size) {
-    hash_t *nhash = g_malloc (size);
+    hash_t *nhash = g_malloc(size);
     g_return_if_fail (nhash);
-    memcpy (nhash, hash, size);
+    memcpy(nhash, hash, size);
     g_ptr_array_add(hashArray->array, nhash);
 }
 
-gsize
-hash_array_compare(hash_array_t *hashArray1, hash_array_t *hashArray2) {
-    return 0;
-}

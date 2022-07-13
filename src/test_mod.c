@@ -44,9 +44,9 @@ main(int argc, char *argv[]) {
         FILE *fp = fopen("/tmp/test1-fingerprint.dat", "w");
         assert(fp);
         fwrite("[", 1, 1, fp);
-        for (i = 0; i < hash_array_size (array); ++ i) {
+        for (i = 0; i < hash_array_size(array); ++i) {
             hash = (audio_peak_hash *) hash_array_index(array, i);
-            len = g_snprintf (buf, sizeof buf, "{\"hash\":\"%s\",\"offset\":\"%d\"},\n", hash->hash, hash->offset);
+            len = g_snprintf(buf, sizeof buf, "{\"hash\":\"%s\",\"offset\":\"%d\"},\n", hash->hash, hash->offset);
             fwrite(buf, 1, len, fp);
         }
         fwrite("]", 1, 1, fp);

@@ -72,6 +72,8 @@ int audio_extract_to_wav(const char *file,
                          int ar,
                          const char *out_wav);
 
-hash_array_t * audio_fingerprint(const char *file);
+hash_array_t *audio_fingerprint(const char *file);
+
+int audio_fingerprint_similarity(hash_array_t *array1, hash_array_t *array2);
 
 #endif

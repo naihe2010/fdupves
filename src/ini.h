@@ -52,6 +52,8 @@ typedef struct {
 
     gint compare_area;
 
+    gint filter_time_rate;
+
     gboolean proc_other;
 
     gint compare_count;
@@ -63,6 +65,9 @@ typedef struct {
     gint thumb_size[2];
 
     gint video_timers[0x10][3];
+
+    gchar **directories;
+    gsize directory_count;
 
     gchar *cache_file;
 

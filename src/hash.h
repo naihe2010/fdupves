@@ -67,6 +67,4 @@ void *hash_array_index(hash_array_t *hashArray, int index);
 
 void hash_array_append(hash_array_t *hashArray, void *hash, size_t size);
 
-gsize hash_array_compare(hash_array_t *hashArray1, hash_array_t *hashArray2);
-
 #endif

@@ -5,13 +5,11 @@ LICENSE file in the root directory of this source tree.
 */
 #include <opencv2/opencv.hpp>
 #include "fingerprint.h"
+#include <glib.h>
 #include <iostream>
 #include <algorithm>
 #include <vector>
 #include <iterator>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/uuid/detail/sha1.hpp>
 #include <fstream>
 
 using namespace std;
@@ -21,7 +19,6 @@ int MIN_HASH_TIME_DELTA = 0;
 int MAX_HASH_TIME_DELTA = 200;
 int FINGERPRINT_REDUCTION = 10;
 int PEAK_NEIGHBORHOOD_SIZE = 20;
-float DEFAULT_AMP_MIN = 50;
 int DEFAULT_WINDOW_SIZE = 4096;
 float DEFAULT_OVERLAP_RATIO = 0.5;
 
@@ -83,18 +80,14 @@ void apply_window(std::vector<float> &hann_window, std::vector<std::vector<float
 }
 
 
-std::string get_sha1(const std::string &p_arg) {
-    boost::uuids::detail::sha1 sha1;
-    sha1.process_bytes(p_arg.data(), p_arg.size());
-    unsigned hash[5] = {0};
-    sha1.get_digest(hash);
-    // Back to string
-    char buf[41] = {0};
-    for (int i = 0; i < 5; i++) {
-        std::sprintf(buf + (i << 3), "%08x", hash[i]);
-    }
-
-    return buf;
+std::string
+get_sha1(const std::string &p_arg) {
+    auto sum = g_checksum_new(G_CHECKSUM_SHA1);
+    g_checksum_update(sum, (guchar *) p_arg.c_str(), p_arg.size());
+    auto digest = g_checksum_get_string(sum);
+    string str = digest;
+    g_checksum_free(sum);
+    return str;
 }
 
 void generate_hashes(vector<pair<int, int>> &v_in, fingerprint_callback callback, fingerprint_arg arg) {
@@ -114,7 +107,7 @@ void generate_hashes(vector<pair<int, int>> &v_in, fingerprint_callback callback
                 int time1 = v_in[i].second;
                 int time2 = v_in[i + j].second;
                 int t_delta = time2 - time1;
-                if ((t_delta >= MIN_HASH_TIME_DELTA) and (t_delta <= MAX_HASH_TIME_DELTA)) {
+                if ((t_delta >= MIN_HASH_TIME_DELTA) && (t_delta <= MAX_HASH_TIME_DELTA)) {
                     char buffer[100];
                     snprintf(buffer, sizeof(buffer), "%d|%d|%d", freq1, freq2, t_delta);
                     std::string to_be_hashed = buffer;
@@ -126,7 +119,7 @@ void generate_hashes(vector<pair<int, int>> &v_in, fingerprint_callback callback
     }
 }
 
-vector<pair<int, int>> get_2D_peaks(cv::Mat data) {
+vector<pair<int, int>> get_2D_peaks(cv::Mat data, int amp_min) {
     /* generate binary structure and apply maximum filter*/
     cv::Mat tmpkernel = cv::getStructuringElement(cv::MORPH_CROSS, cv::Size(3, 3), cv::Point(-1, -1));
     cv::Mat kernel = cv::Mat(PEAK_NEIGHBORHOOD_SIZE * 2 + 1, PEAK_NEIGHBORHOOD_SIZE * 2 + 1, CV_8U, uint8_t(0));
@@ -144,7 +137,7 @@ vector<pair<int, int>> get_2D_peaks(cv::Mat data) {
     vector<pair<int, int>> freq_time_idx_pairs;
     for (int i = 0; i < data.rows; ++i) {
         for (int j = 0; j < data.cols; ++j) {
-            if ((detected_peaks.at<uint8_t>(i, j) == 255) and (data.at<float>(i, j) > DEFAULT_AMP_MIN)) {
+            if ((detected_peaks.at<uint8_t>(i, j) == 255) && (data.at<float>(i, j) > amp_min)) {
                 freq_time_idx_pairs.emplace_back(i, j);
             }
         }
@@ -155,7 +148,7 @@ vector<pair<int, int>> get_2D_peaks(cv::Mat data) {
 }
 
 
-void max_filter(std::vector<std::vector<float>> &data) {
+void max_filter(std::vector<std::vector<float>> &data, int amp_min) {
     //https://gist.github.com/otmb/014107e7b6c6d6a79f0ac1ccc456580a
     cv::Mat m1(data.size(), data.at(0).size(), CV_32F);
     for (int i = 0; i < m1.rows; ++i)
@@ -179,7 +172,7 @@ void max_filter(std::vector<std::vector<float>> &data) {
     vector<pair<int, int>> freq_time_idx_pairs;
     for (int i = 0; i < m1.rows; ++i) {
         for (int j = 0; j < m1.cols; ++j) {
-            if ((detected_peaks.at<uint8_t>(i, j) == 255) and (m1.at<float>(i, j) > DEFAULT_AMP_MIN)) {
+            if ((detected_peaks.at<uint8_t>(i, j) == 255) && (m1.at<float>(i, j) > amp_min)) {
                 freq_time_idx_pairs.push_back(std::make_pair(i, j));
             }
         }
@@ -187,7 +180,8 @@ void max_filter(std::vector<std::vector<float>> &data) {
 }
 
 
-void fingerprint(float *data, int data_size, float fs, fingerprint_callback callback, fingerprint_arg arg) {
+void
+fingerprint(float *data, int data_size, float fs, int amp_min, fingerprint_callback callback, fingerprint_arg arg) {
     std::vector<float> vec(&data[0], data + data_size);
     // see mlab.py on how to decide number of frequencies
     int max_freq = 0; //onesided
@@ -242,13 +236,12 @@ void fingerprint(float *data, int data_size, float fs, fingerprint_callback call
         }
     }
 
-    vector<pair<int, int>> v_in = get_2D_peaks(dst2);
+    vector<pair<int, int>> v_in = get_2D_peaks(dst2, amp_min);
     generate_hashes(v_in, callback, arg);
 }
 
 static int
-test_callback (const char *hash, int offset, void *ptr)
-{
+test_callback(const char *hash, int offset, void *ptr) {
     auto *buf = (ostringstream *) ptr;
     if (buf->str() != "[") {
         *buf << ",\n";
@@ -282,7 +275,7 @@ int test_fingerprint(const char *file) {
 
     std::ofstream s("/tmp/test1-test_fingerprint.dat");
     s << "[";
-    fingerprint(data, i, 22050, test_callback, &s);
+    fingerprint(data, i, 22050, 20, test_callback, &s);
     s << "]";
     s.close();
 

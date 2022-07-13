@@ -30,10 +30,7 @@
 #include "util.h"
 #include "cache.h"
 
-#include <libavformat/avformat.h>
-
 #include <gtk/gtk.h>
-#include <glib/gstdio.h>
 #include <locale.h>
 
 #ifdef WIN32

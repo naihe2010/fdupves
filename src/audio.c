@@ -91,9 +91,9 @@ audio_info_free(audio_info *info) {
 float
 audio_get_length(const char *file) {
     audio_info *info;
-    int length;
+    float length;
 
-    length = 0;
+    length = 0.f;
     info = audio_get_info(file);
     if (info) {
         length = info->length;
@@ -172,7 +172,7 @@ audio_extract(const char *file,
     if (stream->duration != AV_NOPTS_VALUE) {
         total_length = (float) (stream->duration * stream->time_base.num) / (float) stream->time_base.den;
     } else {
-        total_length = (float) (stream->duration) / AV_TIME_BASE;
+        total_length = (float) (format_ctx->duration) / AV_TIME_BASE;
     }
     if (offset + length > total_length) {
         length = total_length - offset;
@@ -366,21 +366,20 @@ int audio_extract_to_wav(const char *file,
 }
 
 static int
-audio_hash_peak_append(const char *hash, int offset, void *ptr)
-{
+audio_hash_peak_append(const char *hash, int offset, void *ptr) {
     hash_array_t *array = (hash_array_t *) ptr;
     audio_peak_hash peak;
 
-    snprintf (peak.hash, sizeof peak.hash, "%s", hash);
+    snprintf(peak.hash, sizeof peak.hash, "%s", hash);
     peak.offset = offset;
-    hash_array_append(array, &peak, sizeof (peak));
+    hash_array_append(array, &peak, sizeof(peak));
 
     return 0;
 }
 
 hash_array_t *
 audio_fingerprint(const char *file) {
-    int samples, memlen, i;
+    int samples, memlen, i, amp_min;
     float medialen;
     short *buf;
     float *datas;
@@ -401,12 +400,45 @@ audio_fingerprint(const char *file) {
     for (i = 0; i < samples; ++i)
         datas[i] = (float) (buf[i]);
 
-    array = hash_array_new();
-    if (array == NULL) {
-        g_free (buf);
-        g_free (datas);
+    for (array = NULL, amp_min = 50; amp_min >= 5; amp_min -= 5) {
+        if (array)
+            hash_array_free(array);
+        array = hash_array_new();
+        if (array == NULL)
+            break;
+
+        fingerprint(datas, samples, 22050, amp_min, audio_hash_peak_append, array);
+        if (hash_array_size(array) > (((int) medialen) >> 2))
+            break;
     }
-    fingerprint(datas, samples, 22050, audio_hash_peak_append, array);
+
+    g_free(buf);
+    g_free(datas);
+
     return array;
+}
+
+int
+audio_fingerprint_similarity(hash_array_t *array1, hash_array_t *array2) {
+    int dis, i, j;
+    audio_peak_hash *ph1, *ph2;
+
+    if (array1 == NULL || array2 == NULL) {
+        return 0;
+    }
+
+    dis = 0;
+    for (i = 0; i < hash_array_size(array1); ++i) {
+        ph1 = hash_array_index(array1, i);
+        for (j = 0; j < hash_array_size(array2); ++j) {
+            ph2 = hash_array_index(array2, j);
+            if (strcmp(ph1->hash, ph2->hash) == 0) {
+                dis++;
+                break;
+            }
+        }
+    }
+
+    return dis;
 }
 

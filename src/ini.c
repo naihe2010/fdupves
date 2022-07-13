@@ -66,6 +66,8 @@ ini_new() {
 
     ini->compare_area = 0;
 
+    ini->filter_time_rate = 0;
+
     ini->compare_count = 4;
 
     ini->same_image_distance = 6;
@@ -88,6 +90,8 @@ ini_new() {
     ini->video_timers[3][1] = 28800;
     ini->video_timers[3][2] = 600;
     ini->video_timers[4][0] = 0;
+
+    ini->directories = NULL;
 
     ini->cache_file = g_build_filename(g_get_home_dir(),
                                        ".cache",
@@ -196,11 +200,26 @@ ini_load(ini_t *ini, const gchar *file) {
                                                    NULL);
     }
 
+    if (g_key_file_has_key(ini->keyfile, "_", "filter_time_rate", NULL)) {
+        ini->filter_time_rate = g_key_file_get_integer(ini->keyfile,
+                                                       "_",
+                                                       "filter_time_rate",
+                                                       NULL);
+    }
+
     if (g_key_file_has_key(ini->keyfile, "_", "compare_count", NULL)) {
         ini->compare_count = g_key_file_get_integer(ini->keyfile,
                                                     "_",
                                                     "compare_count",
                                                     NULL);
+    }
+
+    if (g_key_file_has_key(ini->keyfile, "_", "directories", NULL)) {
+        ini->directories = g_key_file_get_string_list(ini->keyfile,
+                                                      "_",
+                                                      "directories",
+                                                      &ini->directory_count,
+                                                      NULL);
     }
 
     return TRUE;
@@ -243,7 +262,11 @@ ini_save(ini_t *ini, const gchar *file) {
                            SAME_RATE_MAX - ini->same_audio_distance);
 
     g_key_file_set_integer(ini->keyfile, "_", "compare_area", ini->compare_area);
+    g_key_file_set_integer(ini->keyfile, "_", "filter_time_rate", ini->filter_time_rate);
     g_key_file_set_integer(ini->keyfile, "_", "compare_count", ini->compare_count);
+
+    g_key_file_set_string_list(ini->keyfile, "_", "directories", (const gchar *const *) ini->directories,
+                               ini->directory_count);
 
     data = g_key_file_to_data(ini->keyfile, &len, NULL);
     g_file_set_contents(path, data, len, NULL);

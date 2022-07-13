@@ -44,7 +44,7 @@ struct st_hash {
 
 struct st_file {
     const char *path;
-    int length;
+    float length;
     struct st_hash head[1];
     struct st_hash tail[1];
     hash_array_t *hashArray;
@@ -214,13 +214,34 @@ find_videos(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
     return count;
 }
 
+/* convert 0-9 distance to same peak count
+ * num1, first peak count
+ * num2, second peak count
+ */
+static int
+distance_to_same_peak_count(gulong num1, gulong num2, int distance) {
+    int minnum, count;
+    int rate[] = {100, 90, 80, 50, 20,
+                  10, 5, 2, 1, 0};
+
+    minnum = num1 < num2 ? (int) num1 : (int) num2;
+    count = minnum * rate[distance] / 100;
+
+    if (count == 0)
+        count = 1;
+
+    return count;
+}
+
 int
 find_audios(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
     gsize i, j, dist;
-    int count;
+    int count, peak_count;
+    float blen, llen;
     struct st_find find[1];
     struct st_file *afile, *bfile;
     find_step step[1];
+    static int rates[] = {0, 1, 2, 10, 20, 100};
 
     count = 0;
     find->ptr[0] = g_ptr_array_new_with_free_func((GFreeFunc) st_file_free);
@@ -237,27 +258,58 @@ find_audios(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
 
     step->doing = _ ("Compare audio hash value");
     for (i = 0; i < find->ptr[0]->len - 1; ++i) {
+        afile = g_ptr_array_index (find->ptr[0], i);
+
+        if (afile->hashArray == NULL) {
+            find_audio_hash(afile);
+        }
+        if (afile->hashArray == NULL || hash_array_size(afile->hashArray) == 0) {
+            continue;
+        }
+
         for (j = i + 1; j < find->ptr[0]->len; ++j) {
-            afile = g_ptr_array_index (find->ptr[0], i);
             bfile = g_ptr_array_index (find->ptr[0], j);
 
-            if (afile->hashArray == NULL) {
-                find_audio_hash(afile);
-            }
             if (bfile->hashArray == NULL) {
                 find_audio_hash(bfile);
             }
-            dist = hash_array_compare(afile->hashArray, bfile->hashArray);
-            if (dist < g_ini->same_audio_distance) {
-                if (find_video_is_same(afile, bfile, FALSE)) {
-                    step->found = TRUE;
-                    step->afile = afile->path;
-                    step->bfile = bfile->path;
-                    step->type = FD_SAME_AUDIO_HEAD;
-                    cb(step, arg);
-                    ++count;
+            if (bfile->hashArray == NULL || hash_array_size(bfile->hashArray) == 0) {
+                continue;
+            }
+
+            if (g_ini->filter_time_rate != 0) {
+                blen = afile->length;
+                llen = bfile->length;
+                if (blen < llen) {
+                    llen = afile->length;
+                    blen = bfile->length;
+                }
+                if (llen * (float) (rates[g_ini->filter_time_rate] + 1) < blen) {
+                    g_debug("%s length %f and %s lenght %f, filtered",
+                            afile->path, afile->length, bfile->path, bfile->length);
                     continue;
                 }
+            }
+
+            dist = audio_fingerprint_similarity(afile->hashArray, bfile->hashArray);
+            if (dist == 0)
+                continue;
+
+            peak_count = distance_to_same_peak_count(hash_array_size(afile->hashArray),
+                                                     hash_array_size(bfile->hashArray),
+                                                     g_ini->same_audio_distance);
+            g_debug("distance: %d, peaks %lu and %lu, need %d, dist: %lu", g_ini->same_audio_distance,
+                    hash_array_size(afile->hashArray),
+                    hash_array_size(bfile->hashArray),
+                    peak_count, dist);
+            if (dist >= peak_count) {
+                step->found = TRUE;
+                step->afile = afile->path;
+                step->bfile = bfile->path;
+                step->type = FD_SAME_AUDIO_HEAD;
+                cb(step, arg);
+                ++count;
+                continue;
             }
         }
 
@@ -310,11 +362,11 @@ find_video_prepare(const gchar *file, struct st_find *find) {
 
 static void
 find_audio_prepare(const gchar *file, struct st_find *find) {
-    int length;
+    float length;
     struct st_file *stv;
 
     length = audio_get_length(file);
-    if (length <= 0) {
+    if (length <= 0.1f) {
         g_warning ("Can't get duration of %s", file);
         return;
     }

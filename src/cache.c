@@ -25,6 +25,7 @@
  */
 
 #include "cache.h"
+#include "audio.h"
 
 #include <glib.h>
 #include <glib/gstdio.h>
@@ -139,12 +140,23 @@ get_hash_callback(void *para, int n_column, char **column_value, char **column_n
 
 static int
 get_hash_array_callback(void *para, int n_column, char **column_value, char **column_name) {
-    hash_t hash;
-    hash_array_t *hashArray = (hash_array_t *) para;
-    if (column_value[0] != NULL) {
-        hash = strtoull(column_value[0], NULL, 10);
-        hash_array_append(hashArray, &hash, sizeof (hash_t));
+    audio_peak_hash hash;
+    hash_array_t **pHashArray = (hash_array_t **) para;
+
+    if (column_value[1] != NULL) {
+        if (*pHashArray == NULL) {
+            *pHashArray = hash_array_new();
+        }
+        if (*pHashArray == NULL) {
+            g_warning("hash array new error: %s", strerror(errno));
+            return -1;
+        }
+
+        hash.offset = (int) strtof(column_value[0], NULL);
+        snprintf(hash.hash, sizeof hash.hash, "%s", column_value[1]);
+        hash_array_append(*pHashArray, &hash, sizeof(audio_peak_hash));
     }
+
     return 0;
 }
 
@@ -227,21 +239,19 @@ cache_gets(cache_t *cache, const gchar *file, int alg, hash_array_t **pHashArray
     media_id = cache_get_media_id(cache, file);
     g_return_val_if_fail(media_id != -1, FALSE);
 
-    *pHashArray = hash_array_new();
-    g_return_val_if_fail(*pHashArray, FALSE);
-
-    ret = cache_exec(cache, get_hash_array_callback, *pHashArray,
-                     "select hash from hash where alg = %d, media_id = %d",
+    *pHashArray = NULL;
+    ret = cache_exec(cache, get_hash_array_callback, pHashArray,
+                     "select offset, hash from hash where alg = %d and media_id = %d",
                      alg, media_id);
     g_return_val_if_fail (ret, FALSE);
 
-    return TRUE;
+    return (*pHashArray != NULL);
 }
 
 gboolean
 cache_sets(cache_t *cache, const gchar *file, int alg, hash_array_t *hashArray) {
     int media_id, i;
-    hash_t *hash;
+    audio_peak_hash *hash;
     gboolean ret;
 
     media_id = cache_get_media_id(cache, file);
@@ -250,8 +260,8 @@ cache_sets(cache_t *cache, const gchar *file, int alg, hash_array_t *hashArray) 
     for (i = 0; i < hash_array_size(hashArray); ++i) {
         hash = hash_array_index(hashArray, i);
         ret = cache_exec(cache, NULL, NULL,
-                         "insert into hash(media_id, offset, alg, hash) values(%d, %f, %d, '%lld')",
-                         media_id, 0.f, alg, *hash);
+                         "insert into hash(media_id, offset, alg, hash) values(%d, %d, %d, '%s')",
+                         media_id, hash->offset, alg, hash->hash);
         g_return_val_if_fail (ret, FALSE);
     }
 

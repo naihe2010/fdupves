@@ -39,6 +39,15 @@ typedef enum {
 } compare_type;
 
 typedef enum {
+    FD_FILTER_TIME_RATE_0 = 0,
+    FD_FILTER_TIME_RATE_1,
+    FD_FILTER_TIME_RATE_2,
+    FD_FILTER_TIME_RATE_10,
+    FD_FILTER_TIME_RATE_20,
+    FD_FILTER_TIME_RATE_100
+} filter_timerate_type;
+
+typedef enum {
     FIND_IMAGE,
     FIND_VIDEO,
     FIND_AUDIO,
