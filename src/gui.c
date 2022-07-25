@@ -1031,28 +1031,13 @@ gui_pref_cb(GtkWidget *wid, gui_t *gui) {
 
 static void
 gui_help_cb(GtkWidget *wid, gui_t *gui) {
-    gchar *prgdir, *helpfile;
-#ifndef WIN32
-    gchar *uri;
-#endif
-
-    prgdir = fd_install_path();
-    if (prgdir) {
-        helpfile = g_build_filename(prgdir, FD_SYS_HELP_FILE, NULL);
-        g_free(prgdir);
-    } else {
-        helpfile = g_strdup(FD_SYS_HELP_FILE);
-    }
+    const gchar *uri = "https://github.com/naihe2010/fdupves/blob/master/README.md";
 
 #ifndef WIN32
-    uri = g_filename_to_uri(helpfile, NULL, NULL);
     gtk_show_uri_on_window(NULL, uri, GDK_CURRENT_TIME, NULL);
-    g_free(uri);
 #else
-    ShellExecute (NULL, "open", helpfile, NULL, NULL, SW_SHOW);
+    ShellExecute (NULL, "open", uri, NULL, NULL, SW_SHOW);
 #endif
-
-    g_free(helpfile);
 }
 
 static gboolean

@@ -104,7 +104,6 @@ INSTALL(FILES
         fdupvesrc
         DESTINATION etc)
 INSTALL(FILES
-        fdupves.html
         COPYING THANKS AUTHORS
         TODO INSTALL NEWS
         DESTINATION share/fdupves)

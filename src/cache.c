@@ -65,6 +65,7 @@ cache_init(cache_t *cache) {
 cache_t *
 cache_open(const gchar *file) {
     cache_t *cache;
+    gchar *dirname;
     gboolean needInit;
 
     cache = g_malloc(sizeof(cache_t));
@@ -75,6 +76,9 @@ cache_open(const gchar *file) {
     needInit = FALSE;
     if (g_file_test(file, G_FILE_TEST_EXISTS) == FALSE) {
         needInit = TRUE;
+        dirname = g_path_get_dirname(file);
+        g_mkdir_with_parents(dirname);
+        g_free (dirname);
     }
 
     if (sqlite3_open(file, &cache->db) != 0) {

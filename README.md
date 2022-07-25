@@ -12,8 +12,9 @@ Searches the given path for duplicate video or image files. Such files are found
 
 # Requirement
 
-* Gtk2: http://www.gtk.org/
-* FFmpeg: http://ffmpeg.org/
+* Gtk3: https://gtk.org/
+* FFmpeg: https://ffmpeg.org/
+* OpenCV: https://opencv.org/
 
 # Authors
 
