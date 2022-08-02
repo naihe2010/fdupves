@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: acnchess 0.0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2022-07-22 23:23+0800\n"
+"POT-Creation-Date: 2022-08-02 10:30+0800\n"
 "PO-Revision-Date: 2011-09-05 11:12+0800\n"
 "Last-Translator: Alf <naihe2010@126.com>\n"
 "Language-Team: Alf <naihe2010@126.com>\n"
@@ -15,6 +15,31 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+
+#: /home/p/Nutstore/project/fdupves/src/find.c:92
+msgid "Generate image hash value"
+msgstr "生成图片哈希值"
+
+#: /home/p/Nutstore/project/fdupves/src/find.c:99
+msgid "Compare image hash value"
+msgstr "比较图片哈希值"
+
+#: /home/p/Nutstore/project/fdupves/src/find.c:142
+msgid "Generate video screenshot hash value"
+msgstr "生成视频截图哈希值"
+
+#: /home/p/Nutstore/project/fdupves/src/find.c:150
+msgid "Compare video screenshot hash value"
+msgstr "比较视频截图哈希值"
+
+#: /home/p/Nutstore/project/fdupves/src/find.c:257
+msgid "Generate audio screenshot hash value"
+msgstr "生成音频片段哈希值"
+
+#: /home/p/Nutstore/project/fdupves/src/find.c:273
+#, fuzzy
+msgid "Compare audio hash value"
+msgstr "比较图片哈希值"
 
 #: /home/p/Nutstore/project/fdupves/src/video.c:48
 #: /home/p/Nutstore/project/fdupves/src/video.c:121
@@ -61,31 +86,6 @@ msgstr "不能从上下文中接收帧"
 msgid "Cannot initialize sws conversion context"
 msgstr "不能初使化转图形转化器"
 
-#: /home/p/Nutstore/project/fdupves/src/find.c:87
-msgid "Generate image hash value"
-msgstr "生成图片哈希值"
-
-#: /home/p/Nutstore/project/fdupves/src/find.c:94
-msgid "Compare image hash value"
-msgstr "比较图片哈希值"
-
-#: /home/p/Nutstore/project/fdupves/src/find.c:137
-msgid "Generate video screenshot hash value"
-msgstr "生成视频截图哈希值"
-
-#: /home/p/Nutstore/project/fdupves/src/find.c:145
-msgid "Compare video screenshot hash value"
-msgstr "比较视频截图哈希值"
-
-#: /home/p/Nutstore/project/fdupves/src/find.c:250
-msgid "Generate audio screenshot hash value"
-msgstr "生成音频片段哈希值"
-
-#: /home/p/Nutstore/project/fdupves/src/find.c:258
-#, fuzzy
-msgid "Compare audio hash value"
-msgstr "比较图片哈希值"
-
 #: /home/p/Nutstore/project/fdupves/src/audio.c:59
 #: /home/p/Nutstore/project/fdupves/src/audio.c:134
 #, c-format
@@ -124,304 +124,308 @@ msgstr "不能初始化重采样内存\n"
 msgid "Could not resample samples.\n"
 msgstr "不能初始化重采样内容\n"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:358
+#: /home/p/Nutstore/project/fdupves/src/gui.c:332
 msgid "Add"
 msgstr "添加"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:360
+#: /home/p/Nutstore/project/fdupves/src/gui.c:334
 msgid "Add Source Files"
 msgstr "加入源文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:367
+#: /home/p/Nutstore/project/fdupves/src/gui.c:341
 msgid "Find"
 msgstr "查找"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:369
+#: /home/p/Nutstore/project/fdupves/src/gui.c:343
 msgid "Find Duplicate Files"
 msgstr "查找重复文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:376
+#: /home/p/Nutstore/project/fdupves/src/gui.c:350
 msgid "Delete Selected"
 msgstr "删除选中"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:378
+#: /home/p/Nutstore/project/fdupves/src/gui.c:352
 msgid "Delete the selected files"
 msgstr "删除选中的文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:385
-#: /home/p/Nutstore/project/fdupves/src/gui.c:387
-#: /home/p/Nutstore/project/fdupves/src/gui.c:917
+#: /home/p/Nutstore/project/fdupves/src/gui.c:359
+#: /home/p/Nutstore/project/fdupves/src/gui.c:361
+#: /home/p/Nutstore/project/fdupves/src/gui.c:896
 msgid "Preference"
 msgstr "首选项"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:394
+#: /home/p/Nutstore/project/fdupves/src/gui.c:368
 msgid "Help"
 msgstr "帮助"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:395
+#: /home/p/Nutstore/project/fdupves/src/gui.c:369
 msgid "Help infomations"
 msgstr "帮助信息"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:529
+#: /home/p/Nutstore/project/fdupves/src/gui.c:506
 msgid "Source Dir"
 msgstr "源目录"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:546
-msgid "Options"
-msgstr "选项"
-
-#: /home/p/Nutstore/project/fdupves/src/gui.c:553
+#: /home/p/Nutstore/project/fdupves/src/gui.c:528
 msgid "Image"
 msgstr "图片"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:558
+#: /home/p/Nutstore/project/fdupves/src/gui.c:533
 msgid "Video"
 msgstr "视频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:563
+#: /home/p/Nutstore/project/fdupves/src/gui.c:538
 msgid "Audio"
 msgstr "音频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:573
+#: /home/p/Nutstore/project/fdupves/src/gui.c:548
 msgid "Compare all"
 msgstr "比较整体画面"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:574
+#: /home/p/Nutstore/project/fdupves/src/gui.c:549
 msgid "Compare top"
 msgstr "比较画面顶部"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:575
+#: /home/p/Nutstore/project/fdupves/src/gui.c:550
 msgid "Compare bottom"
 msgstr "比较画面底部"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:576
+#: /home/p/Nutstore/project/fdupves/src/gui.c:551
 msgid "Compare left"
 msgstr "比较画面左侧"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:577
+#: /home/p/Nutstore/project/fdupves/src/gui.c:552
 msgid "Compare right"
 msgstr "比较画面右侧"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:579
+#: /home/p/Nutstore/project/fdupves/src/gui.c:554
 msgid "compare audio in video"
 msgstr "比较视频中的音频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:585
+#: /home/p/Nutstore/project/fdupves/src/gui.c:560
 msgid "no time limit"
 msgstr "没有时间限制"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:586
+#: /home/p/Nutstore/project/fdupves/src/gui.c:561
 msgid "time limit in 1"
 msgstr "时间差不多"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:587
+#: /home/p/Nutstore/project/fdupves/src/gui.c:562
 msgid "time limit in 1/2"
 msgstr "时间为媒体的一半以上"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:588
+#: /home/p/Nutstore/project/fdupves/src/gui.c:564
 msgid "time limit int 1/10"
 msgstr "时间为媒体的十分之一以上"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:589
+#: /home/p/Nutstore/project/fdupves/src/gui.c:566
 msgid "time limit in 1/20"
 msgstr "时间为媒体的二十分之一以上"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:590
+#: /home/p/Nutstore/project/fdupves/src/gui.c:568
 msgid "time limit in 1/100"
 msgstr "时间最少为媒体的百分之一以上"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:604
+#: /home/p/Nutstore/project/fdupves/src/gui.c:582
 msgid "Result"
 msgstr "结果"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:614
+#: /home/p/Nutstore/project/fdupves/src/gui.c:592
 msgid "filename filter condition"
 msgstr "文件名过滤条件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:623
+#: /home/p/Nutstore/project/fdupves/src/gui.c:601
 msgid "Select manual"
 msgstr "手动选择"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:625
+#: /home/p/Nutstore/project/fdupves/src/gui.c:603
 #, fuzzy
 msgid "select small path"
 msgstr "选择小画面文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:627
+#: /home/p/Nutstore/project/fdupves/src/gui.c:605
 #, fuzzy
 msgid "select big path"
 msgstr "选择大画面文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:629
+#: /home/p/Nutstore/project/fdupves/src/gui.c:607
 msgid "select small image"
 msgstr "选择小画面文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:631
+#: /home/p/Nutstore/project/fdupves/src/gui.c:609
 msgid "select big image"
 msgstr "选择大画面文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:633
+#: /home/p/Nutstore/project/fdupves/src/gui.c:611
 msgid "select short video"
 msgstr "选择短视频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:635
+#: /home/p/Nutstore/project/fdupves/src/gui.c:613
 msgid "select long video"
 msgstr "选择长视频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:637
+#: /home/p/Nutstore/project/fdupves/src/gui.c:615
 msgid "select others"
 msgstr "反向选择"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:663
+#: /home/p/Nutstore/project/fdupves/src/gui.c:641
 msgid "File Path"
 msgstr "文件路径"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:671
+#: /home/p/Nutstore/project/fdupves/src/gui.c:649
 msgid "Image Size"
 msgstr "图片尺寸"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:679
+#: /home/p/Nutstore/project/fdupves/src/gui.c:657
 msgid "File Size"
 msgstr "文件大小"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:687
+#: /home/p/Nutstore/project/fdupves/src/gui.c:665
 msgid "Video Length"
 msgstr "视频长度"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:695
+#: /home/p/Nutstore/project/fdupves/src/gui.c:673
 msgid "Format"
 msgstr "格式"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:731
+#: /home/p/Nutstore/project/fdupves/src/gui.c:709
 msgid "Message"
 msgstr "消息"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:761
+#: /home/p/Nutstore/project/fdupves/src/gui.c:739
 msgid "Choose Folder"
 msgstr "选择目录"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:764
+#: /home/p/Nutstore/project/fdupves/src/gui.c:742
 msgid "OK"
 msgstr "好"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:765
+#: /home/p/Nutstore/project/fdupves/src/gui.c:743
 msgid "Cancel"
 msgstr "取消"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:859
+#: /home/p/Nutstore/project/fdupves/src/gui.c:837
 #, c-format
 msgid "find %d images to process"
 msgstr "找到%d张图片要处理"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:863
+#: /home/p/Nutstore/project/fdupves/src/gui.c:841
 #, c-format
 msgid "find %d groups same images"
 msgstr "找到%d组相同/相似图片"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:868
+#: /home/p/Nutstore/project/fdupves/src/gui.c:846
 #, c-format
 msgid "find %d videos to process"
 msgstr "找到%d个视频要处理"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:877
+#: /home/p/Nutstore/project/fdupves/src/gui.c:855
 #, c-format
 msgid "find %d groups same videos"
 msgstr "找到%d组相同/相似视频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:882
+#: /home/p/Nutstore/project/fdupves/src/gui.c:860
 #, c-format
 msgid "find %d audios to process"
 msgstr "找到%d个音频要处理"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:888
+#: /home/p/Nutstore/project/fdupves/src/gui.c:866
 #, c-format
 msgid "find %d groups same audios"
 msgstr "找到%d组相同/相似音频"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:920
+#: /home/p/Nutstore/project/fdupves/src/gui.c:899
 msgid "Accept"
 msgstr "接受"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:921
+#: /home/p/Nutstore/project/fdupves/src/gui.c:900
 msgid "Reject"
 msgstr "拒绝"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:932
+#: /home/p/Nutstore/project/fdupves/src/gui.c:911
 msgid "Image Type"
 msgstr "图片类型"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:943
+#: /home/p/Nutstore/project/fdupves/src/gui.c:922
 msgid "Video Type"
 msgstr "视频类型"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:954
+#: /home/p/Nutstore/project/fdupves/src/gui.c:933
 msgid "Audio Type"
 msgstr "音频类型"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:965
+#: /home/p/Nutstore/project/fdupves/src/gui.c:944
 msgid "Image Same Rate"
 msgstr "图片比较精度"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:975
+#: /home/p/Nutstore/project/fdupves/src/gui.c:954
 msgid "Video Same Rate"
 msgstr "视频比较精度"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:985
+#: /home/p/Nutstore/project/fdupves/src/gui.c:964
 msgid "Audio Same Rate"
 msgstr "音频比较精度"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1173
+#: /home/p/Nutstore/project/fdupves/src/gui.c:974
+#, fuzzy
+msgid "Threads Count"
+msgstr "比较次数"
+
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1150
 msgid "Are you sure you want to quit fdupves?"
 msgstr "你确定要退出fdupves？"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1268
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1247
 msgid "open"
 msgstr "打开"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1278
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1257
 msgid "open dir"
 msgstr "打开目录"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1288
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1267
 msgid "delete"
 msgstr "删除"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1298
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1277
 msgid "diff"
 msgstr "比较"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1581
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1560
 #, c-format
 msgid "Are you sure you want to delete %s?"
 msgstr "你确定要删除%s？"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1582
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1561
 msgid "Use this action for all the other files"
 msgstr "应用此操作到所有其它文件"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1587
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1566
 msgid "move file to trash, but not really delete it"
 msgstr "移动文件到回收站，而不是真正删除它"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1785
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1764
 msgid "From Tail"
 msgstr "从尾开始"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1792
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1771
 msgid "Compare Count"
 msgstr "比较次数"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1799
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1778
 msgid "Previous"
 msgstr "向前"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1803
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1782
 msgid "Next"
 msgstr "向后"
 
-#: /home/p/Nutstore/project/fdupves/src/gui.c:1830
+#: /home/p/Nutstore/project/fdupves/src/gui.c:1809
 msgid "Close"
 msgstr "关闭"
+
+#~ msgid "Options"
+#~ msgstr "选项"
 
 #~ msgid "Compare audio screenshot hash value"
 #~ msgstr "比较音频片段哈希值"

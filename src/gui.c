@@ -55,7 +55,7 @@ void same_node_free(same_node *);
 
 void same_list_free(GSList *);
 
-typedef struct {
+struct file_node_s {
     /* same node */
     same_node *node;
 
@@ -83,7 +83,7 @@ typedef struct {
 
     /* bool select */
     gboolean selected;
-} file_node;
+};
 
 static file_node *file_node_new(same_node *,
                                 const gchar *, gint);
@@ -95,34 +95,6 @@ static void file_node_free_full(file_node *);
 
 static void file_node_to_tree_iter(file_node *,
                                    GtkTreeStore *, GtkTreeIter *);
-
-typedef struct {
-    GtkWidget *widget;
-    GtkWidget *mainvbox;
-    GtkWidget *progress;
-
-    GtkToolItem *but_add;
-    GtkToolItem *but_find;
-    GtkToolItem *but_del;
-
-    GtkListStore *dirliststore;
-
-    GPtrArray *images;
-    GPtrArray *videos;
-    GPtrArray *audios;
-    GSList *same_images;
-    GSList *same_videos;
-    GSList *same_audios;
-    GSList *same_list;
-
-    GtkWidget *logtree;
-    GtkListStore *logliststore;
-
-    GtkWidget *restree;
-    GtkTreeStore *restreestore;
-    GtkTreeSelection *resselect;
-    file_node **resselfiles;
-} gui_t;
 
 typedef struct {
     GtkWidget *dialog;
@@ -282,6 +254,8 @@ gui_init(int argc, char *argv[]) {
         ini_new();
     }
 
+    gui->quit = FALSE;
+
     gui->widget = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
     gtk_window_set_title(GTK_WINDOW (gui->widget), PACKAGE_STRING);
@@ -430,6 +404,9 @@ gui_log(const gchar *log_domain,
     gui_log_format(fmt_message, sizeof fmt_message, message);
 
     gui = (gui_t *) user_data;
+
+    if (gui->quit)
+        return;
 
     gdk_threads_enter();
     gtk_list_store_append(gui->logliststore, itr);
@@ -911,9 +888,10 @@ gui_pref_cb(GtkWidget *wid, gui_t *gui) {
     GtkWidget *dialog, *vbox, *frame, *label, *hbox;
     GtkWidget *i_exts, *v_exts, *a_exts;
     GtkWidget *i_level, *v_level, *a_level;
+    GtkWidget *thd_count;
     gchar *tmpstr;
     const gchar *entrystr;
-    gint result, level;
+    gint result, ivalue;
 
     dialog = gtk_dialog_new_with_buttons(_ ("Preference"),
                                          NULL,
@@ -991,6 +969,16 @@ gui_pref_cb(GtkWidget *wid, gui_t *gui) {
     gtk_box_pack_end(GTK_BOX (hbox), a_level, TRUE, TRUE, 5);
     gtk_box_pack_start(GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
 
+    /* a_level */
+    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, FALSE);
+    label = gtk_label_new(_ ("Threads Count"));
+    gtk_box_pack_start(GTK_BOX (hbox), label, FALSE, FALSE, 2);
+    thd_count = gtk_spin_button_new_with_range(1, 32, 1);
+    gtk_spin_button_set_numeric(GTK_SPIN_BUTTON (thd_count), TRUE);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON (thd_count), g_ini->threads_count);
+    gtk_box_pack_end(GTK_BOX (hbox), thd_count, TRUE, TRUE, 5);
+    gtk_box_pack_start(GTK_BOX (vbox), hbox, FALSE, FALSE, 10);
+
     gtk_widget_show_all(gtk_dialog_get_content_area(GTK_DIALOG (dialog)));
 
     result = gtk_dialog_run(GTK_DIALOG (dialog));
@@ -1017,12 +1005,15 @@ gui_pref_cb(GtkWidget *wid, gui_t *gui) {
         g_ini->audio_suffix = g_strsplit(entrystr, ",", 0);
     }
 
-    level = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON (i_level));
-    g_ini->same_image_distance = 10 - level;
-    level = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON (v_level));
-    g_ini->same_video_distance = 10 - level;
-    level = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON (a_level));
-    g_ini->same_audio_distance = 10 - level;
+    ivalue = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON (i_level));
+    g_ini->same_image_distance = 10 - ivalue;
+    ivalue = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON (v_level));
+    g_ini->same_video_distance = 10 - ivalue;
+    ivalue = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON (a_level));
+    g_ini->same_audio_distance = 10 - ivalue;
+
+    ivalue = (int) gtk_spin_button_get_value(GTK_SPIN_BUTTON(thd_count));
+    g_ini->threads_count = ivalue;
 
     ini_save(g_ini, FD_USR_CONF_FILE);
 
@@ -1169,6 +1160,8 @@ gui_destroy_cb(GtkWidget *but, GdkEvent *ev, gui_t *gui) {
 
 static void
 gui_destroy(gui_t *gui) {
+    gui->quit = TRUE;
+
     gui_save_directories(gui);
     ini_save(g_ini, FD_USR_CONF_FILE);
 

@@ -30,6 +30,7 @@
 #include "video.h"
 #include "ini.h"
 #include "util.h"
+#include "gui.h"
 
 #include <string.h>
 
@@ -45,6 +46,7 @@ struct st_hash {
 struct st_file {
     const char *path;
     float length;
+    float offset;
     struct st_hash head[1];
     struct st_hash tail[1];
     hash_array_t *hashArray;
@@ -55,6 +57,7 @@ struct st_find {
     find_type type;
     find_step *step;
     find_step_cb cb;
+    GThreadPool *thread_pool;
     gpointer arg;
 };
 
@@ -62,11 +65,11 @@ static void find_video_prepare(const gchar *file, struct st_find *find);
 
 static void find_audio_prepare(const gchar *file, struct st_find *find);
 
-static int find_video_time_hash(struct st_file *file, int seek, int tail);
+static int image_hash_func(struct st_file *file);
 
-static gboolean find_video_is_same(struct st_file *afile, struct st_file *bfile, gboolean tail);
+static int video_hash_func(struct st_file *file);
 
-static int find_audio_hash(struct st_file *file);
+static int audio_hashes_func(struct st_file *file);
 
 static void st_file_free(struct st_file *);
 
@@ -123,6 +126,7 @@ find_videos(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
     struct st_find find[1];
     struct st_file *afile, *bfile;
     find_step step[1];
+    gui_t *gui = (gui_t *) arg;
 
     count = 0;
 
@@ -149,56 +153,49 @@ find_videos(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
             continue;
         }
 
+        find->thread_pool = g_thread_pool_new((GFunc) video_hash_func, find, g_ini->threads_count, FALSE, NULL);
+        if (find->thread_pool == NULL) {
+            g_ptr_array_free(find->ptr[g], TRUE);
+            continue;
+        }
+
+        for (i = 0; i < find->ptr[g]->len; ++i) {
+            afile = g_ptr_array_index (find->ptr[g], i);
+            afile->offset = g_ini->video_timers[g][2];
+            g_thread_pool_push(find->thread_pool, afile, NULL);
+        }
+
+        g_thread_pool_free(find->thread_pool, FALSE, TRUE);
+
+        if (gui->quit)
+            return 0;
+
         for (i = 0; i < find->ptr[g]->len - 1; ++i) {
             for (j = i + 1; j < find->ptr[g]->len; ++j) {
                 afile = g_ptr_array_index (find->ptr[g], i);
                 bfile = g_ptr_array_index (find->ptr[g], j);
 
-                if (afile->head->hash == 0) {
-                    find_video_time_hash(afile,
-                                         g_ini->video_timers[g][2],
-                                         0);
-                }
-                if (bfile->head->hash == 0) {
-                    find_video_time_hash(bfile,
-                                         g_ini->video_timers[g][2],
-                                         0);
-                }
                 dist = hash_cmp(afile->head->hash,
                                 bfile->head->hash);
                 if (dist < g_ini->same_video_distance) {
-                    if (find_video_is_same(afile, bfile, FALSE)) {
-                        step->found = TRUE;
-                        step->afile = afile->path;
-                        step->bfile = bfile->path;
-                        step->type = FD_SAME_VIDEO_HEAD;
-                        cb(step, arg);
-                        ++count;
-                        continue;
-                    }
+                    step->found = TRUE;
+                    step->afile = afile->path;
+                    step->bfile = bfile->path;
+                    step->type = FD_SAME_VIDEO_HEAD;
+                    cb(step, arg);
+                    ++count;
+                    continue;
                 }
 
-                if (afile->tail->hash == 0) {
-                    find_video_time_hash(afile,
-                                         afile->length - g_ini->video_timers[g][2],
-                                         1);
-                }
-                if (bfile->tail->hash == 0) {
-                    find_video_time_hash(bfile,
-                                         bfile->length - g_ini->video_timers[g][2],
-                                         1);
-                }
                 dist = hash_cmp(afile->tail->hash,
                                 bfile->tail->hash);
                 if (dist < g_ini->same_video_distance) {
-                    if (find_video_is_same(afile, bfile, TRUE)) {
-                        step->found = TRUE;
-                        step->afile = afile->path;
-                        step->bfile = bfile->path;
-                        step->type = FD_SAME_VIDEO_TAIL;
-                        cb(step, arg);
-                        ++count;
-                    }
+                    step->found = TRUE;
+                    step->afile = afile->path;
+                    step->bfile = bfile->path;
+                    step->type = FD_SAME_VIDEO_TAIL;
+                    cb(step, arg);
+                    ++count;
                 }
             }
 
@@ -241,6 +238,7 @@ find_audios(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
     struct st_find find[1];
     struct st_file *afile, *bfile;
     find_step step[1];
+    gui_t *gui = (gui_t *) arg;
     static int rates[] = {0, 1, 2, 10, 20, 100};
 
     count = 0;
@@ -250,30 +248,35 @@ find_audios(GPtrArray *ptr, find_step_cb cb, gpointer arg) {
     step->now = 0;
     step->doing = _ ("Generate audio screenshot hash value");
 
+    find->thread_pool = g_thread_pool_new((GFunc) audio_hashes_func, NULL, g_ini->threads_count, FALSE, NULL);
+    if (find->thread_pool == NULL) {
+        g_ptr_array_free(find->ptr[0], TRUE);
+        return -1;
+    }
+
     find->step = step;
     find->type = FIND_AUDIO;
     find->cb = cb;
     find->arg = arg;
     g_ptr_array_foreach(ptr, (GFunc) find_audio_prepare, find);
 
+    g_thread_pool_free(find->thread_pool, FALSE, TRUE);
+
+    if (gui->quit)
+        return 0;
+
     step->doing = _ ("Compare audio hash value");
     for (i = 0; i < find->ptr[0]->len - 1; ++i) {
         afile = g_ptr_array_index (find->ptr[0], i);
 
-        if (afile->hashArray == NULL) {
-            find_audio_hash(afile);
-        }
-        if (afile->hashArray == NULL || hash_array_size(afile->hashArray) == 0) {
+        if (hash_array_size(afile->hashArray) == 0) {
             continue;
         }
 
         for (j = i + 1; j < find->ptr[0]->len; ++j) {
             bfile = g_ptr_array_index (find->ptr[0], j);
 
-            if (bfile->hashArray == NULL) {
-                find_audio_hash(bfile);
-            }
-            if (bfile->hashArray == NULL || hash_array_size(bfile->hashArray) == 0) {
+            if (hash_array_size(bfile->hashArray) == 0) {
                 continue;
             }
 
@@ -377,62 +380,28 @@ find_audio_prepare(const gchar *file, struct st_find *find) {
     stv->length = length;
     stv->hashArray = NULL;
 
+    g_thread_pool_push(find->thread_pool, stv, NULL);
+
     g_ptr_array_add(find->ptr[0], stv);
 
     ++find->step->now;
     find->cb(find->step, find->arg);
 }
 
-static gboolean
-find_video_is_same(struct st_file *afile, struct st_file *bfile, gboolean tail) {
-    int seeka[FD_COMP_CNT], seekb[FD_COMP_CNT];
-    int i, rate, length;
-    hash_t hasha, hashb;
-
-    if (tail) {
-        length = afile->tail->seek < bfile->tail->seek ?
-                 afile->tail->seek :
-                 bfile->tail->seek;
-        rate = length / (FD_COMP_CNT + 1);
-        for (i = 0; i < FD_COMP_CNT; ++i) {
-            seeka[i] = afile->tail->seek - (i + 1) * rate;
-            seekb[i] = bfile->tail->seek - (i + 1) * rate;
-        }
-    } else {
-        length = afile->length < bfile->length ? afile->length : bfile->length;
-        rate = (length - afile->head->seek) / (FD_COMP_CNT + 1);
-        for (i = 0; i < FD_COMP_CNT; ++i) {
-            seeka[i] = afile->head->seek + (i + 1) * rate;
-            seekb[i] = bfile->head->seek + (i + 1) * rate;
-        }
-    }
-
-    for (i = 0; i < FD_COMP_CNT; ++i) {
-        hasha = video_time_hash(afile->path, seeka[i]);
-        hashb = video_time_hash(bfile->path, seekb[i]);
-        if (hash_cmp(hasha, hashb) >= g_ini->same_video_distance) {
-            return FALSE;
-        }
-    }
-
-    return TRUE;
-}
-
 static int
-find_video_time_hash(struct st_file *file, int seek, int tail) {
-    if (tail) {
-        file->tail->seek = seek;
-        file->tail->hash = video_time_hash(file->path, seek);
-    } else {
-        file->head->seek = seek;
-        file->head->hash = video_time_hash(file->path, seek);
-    }
-
+image_hash_func(struct st_file *file) {
     return 0;
 }
 
 static int
-find_audio_hash(struct st_file *file) {
+video_hash_func(struct st_file *file) {
+    file->head->hash = video_time_hash(file->path, file->offset);
+    file->tail->hash = video_time_hash(file->path, file->length - file->offset);
+    return 0;
+}
+
+static int
+audio_hashes_func(struct st_file *file) {
     file->hashArray = audio_hashes(file->path);
     return 0;
 }

@@ -77,8 +77,8 @@ cache_open(const gchar *file) {
     if (g_file_test(file, G_FILE_TEST_EXISTS) == FALSE) {
         needInit = TRUE;
         dirname = g_path_get_dirname(file);
-        g_mkdir_with_parents(dirname);
-        g_free (dirname);
+        g_mkdir_with_parents(dirname, 0755);
+        g_free(dirname);
     }
 
     if (sqlite3_open(file, &cache->db) != 0) {

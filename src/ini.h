@@ -62,6 +62,8 @@ typedef struct {
     gint same_video_distance;
     gint same_audio_distance;
 
+    gint threads_count;
+
     gint thumb_size[2];
 
     gint video_timers[0x10][3];
