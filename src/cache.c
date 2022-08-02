@@ -65,11 +65,11 @@ cache_init(cache_t *cache) {
 cache_t *
 cache_open(const gchar *file) {
     cache_t *cache;
-    gchar *dirname;
+    gchar * dirname;
     gboolean needInit;
 
     cache = g_malloc(sizeof(cache_t));
-    g_return_val_if_fail (cache, NULL);
+    g_return_val_if_fail(cache, NULL);
 
     cache->file = g_strdup(file);
 
@@ -82,7 +82,7 @@ cache_open(const gchar *file) {
     }
 
     if (sqlite3_open(file, &cache->db) != 0) {
-        g_warning ("Open cache file: %s failed:%s.", file, strerror(errno));
+        g_warning("Open cache file: %s failed:%s.", file, strerror(errno));
         g_free(cache);
         return NULL;
     }
@@ -192,7 +192,7 @@ cache_get_media_id(cache_t *cache, const gchar *file) {
                          "insert into media(path, size, mtime) values('%s', %ld, %ld);",
                          file, buf->st_size, buf->st_mtim.tv_sec);
 #endif
-        g_return_val_if_fail (ret, -1);
+        g_return_val_if_fail(ret, -1);
     }
 
     ret = cache_exec(cache, get_id_callback, &media_id,
@@ -214,7 +214,7 @@ cache_get(cache_t *cache, const gchar *file, float off, int alg, hash_t *hp) {
     ret = cache_exec(cache, get_hash_callback, hp,
                      "select hash from hash where offset=%f and alg=%d and media_id=%d",
                      off, alg, media_id);
-    g_return_val_if_fail (ret, FALSE);
+    g_return_val_if_fail(ret, FALSE);
 
     return *hp != 0;
 }
@@ -230,7 +230,7 @@ cache_set(cache_t *cache, const gchar *file, float off, int alg, hash_t h) {
     ret = cache_exec(cache, NULL, NULL,
                      "insert into hash(media_id, offset, alg, hash) values(%d, %f, %d, '%lld')",
                      media_id, off, alg, h);
-    g_return_val_if_fail (ret, FALSE);
+    g_return_val_if_fail(ret, FALSE);
 
     return TRUE;
 }
@@ -247,7 +247,7 @@ cache_gets(cache_t *cache, const gchar *file, int alg, hash_array_t **pHashArray
     ret = cache_exec(cache, get_hash_array_callback, pHashArray,
                      "select offset, hash from hash where alg = %d and media_id = %d",
                      alg, media_id);
-    g_return_val_if_fail (ret, FALSE);
+    g_return_val_if_fail(ret, FALSE);
 
     return (*pHashArray != NULL);
 }
@@ -266,7 +266,7 @@ cache_sets(cache_t *cache, const gchar *file, int alg, hash_array_t *hashArray) 
         ret = cache_exec(cache, NULL, NULL,
                          "insert into hash(media_id, offset, alg, hash) values(%d, %d, %d, '%s')",
                          media_id, hash->offset, alg, hash->hash);
-        g_return_val_if_fail (ret, FALSE);
+        g_return_val_if_fail(ret, FALSE);
     }
 
     return TRUE;
@@ -277,7 +277,7 @@ cache_remove(cache_t *cache, const gchar *file) {
     int media_id;
 
     media_id = cache_get_media_id(cache, file);
-    g_return_val_if_fail (media_id != -1, FALSE);
+    g_return_val_if_fail(media_id != -1, FALSE);
 
     cache_exec(cache, NULL, NULL,
                "delete from hash where media_id=%d;",
@@ -288,4 +288,31 @@ cache_remove(cache_t *cache, const gchar *file) {
                media_id);
 
     return TRUE;
+}
+
+static int
+cache_remove_if_no_exists_callback(void *para, int n_column, char **column_value, char **column_name) {
+    cache_t *cache = (cache_t *) para;
+    char *path;
+    int media_id;
+
+    if (column_value[0] != NULL) {
+        path = column_value[1];
+        if (g_file_test(path, G_FILE_TEST_EXISTS) == FALSE) {
+            media_id = atoi(column_value[0]);
+            cache_exec(cache, NULL, NULL,
+                       "delete from hash where media_id=%d;",
+                       media_id);
+            cache_exec(cache, NULL, NULL,
+                       "delete from media where id=%d;",
+                       media_id);
+        }
+    }
+    return 0;
+}
+
+void
+cache_cleanup(cache_t *cache) {
+    cache_exec(cache, cache_remove_if_no_exists_callback, cache,
+               "select id, path from media;");
 }

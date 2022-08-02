@@ -47,6 +47,8 @@ gboolean cache_sets(cache_t *, const gchar *, int alg, hash_array_t *);
 
 gboolean cache_remove(cache_t *, const gchar *);
 
+void cache_cleanup(cache_t *);
+
 extern cache_t *g_cache;
 
 #endif

@@ -152,6 +152,8 @@ static void gui_delsel_cb(GtkWidget *, gui_t *);
 
 static void gui_pref_cb(GtkWidget *, gui_t *);
 
+static void gui_cleanup_cb(GtkWidget *, gui_t *);
+
 static void gui_help_cb(GtkWidget *, gui_t *);
 
 static void gui_find_step_cb(const find_step *, gui_t *);
@@ -362,6 +364,15 @@ toolbar_new(gui_t *gui) {
     g_signal_connect (G_OBJECT(but),
                       "clicked",
                       G_CALLBACK(gui_pref_cb), gui);
+    gtk_toolbar_insert(GTK_TOOLBAR (toolbar), but, -1);
+
+    img = fd_toolbar_icon_new("cleanup.png");
+    but = gtk_tool_button_new(img, _ ("Cleanup"));
+    gtk_widget_set_tooltip_text(GTK_WIDGET (but),
+                                _ ("Cleanup not used cache data"));
+    g_signal_connect (G_OBJECT(but),
+                      "clicked",
+                      G_CALLBACK(gui_cleanup_cb), gui);
     gtk_toolbar_insert(GTK_TOOLBAR (toolbar), but, -1);
 
     img = fd_toolbar_icon_new("help.png");
@@ -1018,6 +1029,11 @@ gui_pref_cb(GtkWidget *wid, gui_t *gui) {
     ini_save(g_ini, FD_USR_CONF_FILE);
 
     gtk_widget_destroy(dialog);
+}
+
+static void
+gui_cleanup_cb(GtkWidget *wid, gui_t *gui) {
+    cache_cleanup(g_cache);
 }
 
 static void
