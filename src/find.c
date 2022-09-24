@@ -65,8 +65,6 @@ static void find_video_prepare(const gchar *file, struct st_find *find);
 
 static void find_audio_prepare(const gchar *file, struct st_find *find);
 
-static int image_hash_func(struct st_file *file);
-
 static int video_hash_func(struct st_file *file);
 
 static int audio_hashes_func(struct st_file *file);
@@ -386,11 +384,6 @@ find_audio_prepare(const gchar *file, struct st_find *find) {
 
     ++find->step->now;
     find->cb(find->step, find->arg);
-}
-
-static int
-image_hash_func(struct st_file *file) {
-    return 0;
 }
 
 static int
