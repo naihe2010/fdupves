@@ -29,54 +29,63 @@
 
 #include <glib.h>
 
-typedef enum {
-    FD_COMPARE_ALL = 0,
-    FD_COMPARE_TOP,
-    FD_COMPARE_BOTTOM,
-    FD_COMPARE_LEFT,
-    FD_COMPARE_RIGHT,
-    FD_COMPARE_AUDIO_IN_VIDEO
+typedef enum
+{
+  FD_COMPARE_ALL = 0,
+  FD_COMPARE_TOP,
+  FD_COMPARE_BOTTOM,
+  FD_COMPARE_LEFT,
+  FD_COMPARE_RIGHT,
+  FD_COMPARE_AUDIO_IN_VIDEO
 } compare_type;
 
-typedef enum {
-    FD_FILTER_TIME_RATE_0 = 0,
-    FD_FILTER_TIME_RATE_1,
-    FD_FILTER_TIME_RATE_2,
-    FD_FILTER_TIME_RATE_10,
-    FD_FILTER_TIME_RATE_20,
-    FD_FILTER_TIME_RATE_100
+typedef enum
+{
+  FD_FILTER_TIME_RATE_0 = 0,
+  FD_FILTER_TIME_RATE_1,
+  FD_FILTER_TIME_RATE_2,
+  FD_FILTER_TIME_RATE_10,
+  FD_FILTER_TIME_RATE_20,
+  FD_FILTER_TIME_RATE_100
 } filter_timerate_type;
 
-typedef enum {
-    FIND_IMAGE,
-    FIND_VIDEO,
-    FIND_AUDIO,
+typedef enum
+{
+  FIND_IMAGE,
+  FIND_VIDEO,
+  FIND_AUDIO,
+  FIND_EBOOK
 } find_type;
 
-typedef enum {
-    FD_SAME_IMAGE,
-    FD_SAME_VIDEO_HEAD,
-    FD_SAME_VIDEO_TAIL,
-    FD_SAME_AUDIO_HEAD,
-    FD_SAME_AUDIO_TAIL,
+typedef enum
+{
+  FD_SAME_IMAGE,
+  FD_SAME_VIDEO_HEAD,
+  FD_SAME_VIDEO_TAIL,
+  FD_SAME_AUDIO_HEAD,
+  FD_SAME_AUDIO_TAIL,
+  FD_SAME_EBOOK,
 } same_type;
 
-typedef struct {
-    long total;
-    long now;
-    const gchar *doing;
-    gboolean found;
-    same_type type;
-    const gchar *afile;
-    const gchar *bfile;
+typedef struct
+{
+  long total;
+  long now;
+  const gchar *doing;
+  gboolean found;
+  same_type type;
+  const gchar *afile;
+  const gchar *bfile;
 } find_step;
 
-typedef void (*find_step_cb)(const find_step *, gpointer);
+typedef void (*find_step_cb) (const find_step *, gpointer);
 
-int find_images(GPtrArray *, find_step_cb, gpointer);
+int find_images (GPtrArray *, find_step_cb, gpointer);
 
-int find_videos(GPtrArray *, find_step_cb, gpointer);
+int find_videos (GPtrArray *, find_step_cb, gpointer);
 
-int find_audios(GPtrArray *, find_step_cb, gpointer);
+int find_audios (GPtrArray *, find_step_cb, gpointer);
+
+int find_ebooks (GPtrArray *, find_step_cb, gpointer);
 
 #endif

@@ -11,6 +11,7 @@ SET(HEADERS
         video.h
         audio.h
         image.h
+        ebook.h
         cache.h
         ../sqlite3/sqlite3.h
         ../fingerprint/fingerprint.h
@@ -26,6 +27,7 @@ SET(SOURCES
         video.c
         audio.c
         image.c
+        ebook.c
         cache.c
         ../sqlite3/sqlite3.c
         ../fingerprint/fingerprint.cpp

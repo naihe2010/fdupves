@@ -23,33 +23,38 @@
  *
  *  Author: Alf <naihe2010@126.com>
  */
-#include <assert.h>
-#include "audio.h"
 #include "../fingerprint/fingerprint.h"
+#include "audio.h"
+#include <assert.h>
 
 int
-main(int argc, char *argv[]) {
-    hash_array_t *array;
-    audio_peak_hash *hash;
-    char buf[1000];
-    int i, len;
+main (int argc, char *argv[])
+{
+  hash_array_t *array;
+  audio_peak_hash *hash;
+  char buf[1000];
+  int i, len;
 
-    audio_extract_to_wav(argv[1], atoi(argv[2]), atoi(argv[3]),
-                         16000, argv[4]);
+  audio_extract_to_wav (argv[1], atoi (argv[2]), atoi (argv[3]), 16000,
+                        argv[4]);
 
-    test_fingerprint(argv[1]);
+  test_fingerprint (argv[1]);
 
-    array = audio_fingerprint(argv[1]);
-    if (array) {
-        FILE *fp = fopen("/tmp/test1-fingerprint.dat", "w");
-        assert(fp);
-        fwrite("[", 1, 1, fp);
-        for (i = 0; i < hash_array_size(array); ++i) {
-            hash = (audio_peak_hash *) hash_array_index(array, i);
-            len = g_snprintf(buf, sizeof buf, "{\"hash\":\"%s\",\"offset\":\"%d\"},\n", hash->hash, hash->offset);
-            fwrite(buf, 1, len, fp);
+  array = audio_fingerprint (argv[1]);
+  if (array)
+    {
+      FILE *fp = fopen ("/tmp/test1-fingerprint.dat", "w");
+      assert (fp);
+      fwrite ("[", 1, 1, fp);
+      for (i = 0; i < hash_array_size (array); ++i)
+        {
+          hash = (audio_peak_hash *)hash_array_index (array, i);
+          len = g_snprintf (buf, sizeof buf,
+                            "{\"hash\":\"%s\",\"offset\":\"%d\"},\n",
+                            hash->hash, hash->offset);
+          fwrite (buf, 1, len, fp);
         }
-        fwrite("]", 1, 1, fp);
-        fclose(fp);
+      fwrite ("]", 1, 1, fp);
+      fclose (fp);
     }
 }

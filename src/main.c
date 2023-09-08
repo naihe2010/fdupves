@@ -25,10 +25,10 @@
  */
 /* @date Created: 2013/01/16 10:12:33 Alf*/
 
+#include "cache.h"
 #include "gui.h"
 #include "ini.h"
 #include "util.h"
-#include "cache.h"
 
 #include <gtk/gtk.h>
 #include <locale.h>
@@ -37,12 +37,12 @@
 
 #include <ObjBase.h>
 
-# ifdef NDEBUG
-#  pragma comment (linker, "/subsystem:windows")
-#  pragma comment (linker, "/ENTRY:mainCRTStartup")
-# else
-#  pragma comment (linker, "/subsystem:console")
-# endif
+#ifdef NDEBUG
+#pragma comment(linker, "/subsystem:windows")
+#pragma comment(linker, "/ENTRY:mainCRTStartup")
+#else
+#pragma comment(linker, "/subsystem:console")
+#endif
 
 #endif
 
@@ -50,62 +50,69 @@
 #include <google/profiler.h>
 #endif
 
-static void fdupves_cleanup();
+static void fdupves_cleanup ();
 
 int
-main(int argc, char *argv[]) {
-    gchar *prgdir, *localedir;
+main (int argc, char *argv[])
+{
+  gchar *prgdir, *localedir;
 
-    prgdir = fd_install_path();
-    if (prgdir) {
-        localedir = g_build_filename(prgdir, FD_SYS_LOCALE_DIR, NULL);
-        g_free(prgdir);
-    } else {
-        localedir = g_strdup(FD_SYS_LOCALE_DIR);
+  prgdir = fd_install_path ();
+  if (prgdir)
+    {
+      localedir = g_build_filename (prgdir, FD_SYS_LOCALE_DIR, NULL);
+      g_free (prgdir);
+    }
+  else
+    {
+      localedir = g_strdup (FD_SYS_LOCALE_DIR);
     }
 
-    if (localedir) {
-        setlocale(LC_ALL, "");
-        bindtextdomain(PACKAGE, localedir);
-        bind_textdomain_codeset(PACKAGE, "UTF-8");
-        textdomain(PACKAGE);
-        g_free(localedir);
+  if (localedir)
+    {
+      setlocale (LC_ALL, "");
+      bindtextdomain (PACKAGE, localedir);
+      bind_textdomain_codeset (PACKAGE, "UTF-8");
+      textdomain (PACKAGE);
+      g_free (localedir);
     }
 
     /* av format init */
-    //av_register_all ();
+    // av_register_all ();
 
 #ifdef WIN32
-    /* com init */
-    CoInitializeEx (NULL, COINIT_MULTITHREADED);
+  /* com init */
+  CoInitializeEx (NULL, COINIT_MULTITHREADED);
 #endif
 
-    gdk_threads_init();
+  gdk_threads_init ();
 
-    gtk_init(&argc, &argv);
+  gtk_init (&argc, &argv);
 
-    gui_init(argc, argv);
+  gui_init (argc, argv);
 
-    cache_open(g_ini->cache_file);
+  cache_open (g_ini->cache_file);
 
-    gdk_threads_enter();
+  gdk_threads_enter ();
 #ifdef FDUPVES_ENABLE_PROFILER
-    ProfilerStart ("fdupves.prof");
+  ProfilerStart ("fdupves.prof");
 #endif
-    gtk_main();
+  gtk_main ();
 #ifdef FDUPVES_ENABLE_PROFILER
-    ProfilerStop ();
+  ProfilerStop ();
 #endif
-    gdk_threads_leave();
+  gdk_threads_leave ();
 
-    fdupves_cleanup();
+  fdupves_cleanup ();
 
-    return 0;
+  return 0;
 }
 
 static void
-fdupves_cleanup() {
-    if (g_cache) {
-        cache_close(g_cache);
+fdupves_cleanup ()
+{
+  if (g_cache)
+    {
+      cache_close (g_cache);
     }
 }

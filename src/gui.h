@@ -32,38 +32,41 @@
 
 typedef struct file_node_s file_node;
 
-struct gui_s {
-    gboolean quit;
+struct gui_s
+{
+  gboolean quit;
 
-    GtkWidget *widget;
-    GtkWidget *mainvbox;
-    GtkWidget *progress;
+  GtkWidget *widget;
+  GtkWidget *mainvbox;
+  GtkWidget *progress;
 
-    GtkToolItem *but_add;
-    GtkToolItem *but_find;
-    GtkToolItem *but_del;
+  GtkToolItem *but_add;
+  GtkToolItem *but_find;
+  GtkToolItem *but_del;
 
-    GtkListStore *dirliststore;
+  GtkListStore *dirliststore;
 
-    GPtrArray *images;
-    GPtrArray *videos;
-    GPtrArray *audios;
-    GSList *same_images;
-    GSList *same_videos;
-    GSList *same_audios;
-    GSList *same_list;
+  GPtrArray *images;
+  GPtrArray *videos;
+  GPtrArray *audios;
+  GPtrArray *ebooks;
+  GSList *same_images;
+  GSList *same_videos;
+  GSList *same_audios;
+  GSList *same_ebooks;
+  GSList *same_list;
 
-    GtkWidget *logtree;
-    GtkListStore *logliststore;
+  GtkWidget *logtree;
+  GtkListStore *logliststore;
 
-    GtkWidget *restree;
-    GtkTreeStore *restreestore;
-    GtkTreeSelection *resselect;
-    file_node **resselfiles;
+  GtkWidget *restree;
+  GtkTreeStore *restreestore;
+  GtkTreeSelection *resselect;
+  file_node **resselfiles;
 };
 
 typedef struct gui_s gui_t;
 
-gboolean gui_init(int argc, char *argv[]);
+gboolean gui_init (int argc, char *argv[]);
 
 #endif

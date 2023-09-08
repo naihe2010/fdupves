@@ -28,6 +28,7 @@
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
-GdkPixbuf *fdupves_gdkpixbuf_load_file_at_size(const gchar *, int, int, GError **);
+GdkPixbuf *fdupves_gdkpixbuf_load_file_at_size (const gchar *, int, int,
+                                                GError **);
 
 #endif

@@ -19,17 +19,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
-/* @CFILE image.h
+/* @CFILE ihash.h
  *
  *  Author: Alf <naihe2010@126.com>
  */
 
-#ifndef _FDUPVES_IMAGE_WIN_H_
-#define _FDUPVES_IMAGE_WIN_H_
+#ifndef _FDUPVES_EBOOK_H_
+#define _FDUPVES_EBOOK_H_
 
-#include <gdk-pixbuf/gdk-pixbuf.h>
+typedef struct
+{
 
-GdkPixbuf *gdk_pixbuf_new_from_file_at_scale_wic (const gchar *, gint, gint,
-                                                  gboolean, GError **);
+} ebook_hash_t;
+
+ebook_hash_t ebook_file_hash (const char *file);
+
+int ebook_hash_cmp (ebook_hash_t *ha, ebook_hash_t *hb);
 
 #endif

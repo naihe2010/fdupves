@@ -38,54 +38,58 @@
 #define SAME_RATE_MAX 10
 #endif
 
-typedef struct {
-    gboolean verbose;
+typedef struct
+{
+  gboolean verbose;
 
-    gboolean proc_image;
-    gchar **image_suffix;
+  gboolean proc_image;
+  gchar **image_suffix;
 
-    gboolean proc_video;
-    gchar **video_suffix;
+  gboolean proc_video;
+  gchar **video_suffix;
 
-    gboolean proc_audio;
-    gchar **audio_suffix;
+  gboolean proc_audio;
+  gchar **audio_suffix;
 
-    gint compare_area;
+  gboolean proc_ebook;
+  gchar **ebook_suffix;
 
-    gint filter_time_rate;
+  gint compare_area;
 
-    gboolean proc_other;
+  gint filter_time_rate;
 
-    gint compare_count;
+  gboolean proc_other;
 
-    gint same_image_distance;
-    gint same_video_distance;
-    gint same_audio_distance;
+  gint compare_count;
 
-    gint threads_count;
+  gint same_image_distance;
+  gint same_video_distance;
+  gint same_audio_distance;
 
-    gint thumb_size[2];
+  gint threads_count;
 
-    gint video_timers[0x10][3];
+  gint thumb_size[2];
 
-    gchar **directories;
-    gsize directory_count;
+  gint video_timers[0x10][3];
 
-    gchar *cache_file;
+  gchar **directories;
+  gsize directory_count;
 
-    /* Private values */
-    GKeyFile *keyfile;
+  gchar *cache_file;
+
+  /* Private values */
+  GKeyFile *keyfile;
 
 } ini_t;
 
 extern ini_t *g_ini;
 
-ini_t *ini_new();
+ini_t *ini_new ();
 
-ini_t *ini_new_with_file(const gchar *);
+ini_t *ini_new_with_file (const gchar *);
 
-gboolean ini_load(ini_t *, const gchar *);
+gboolean ini_load (ini_t *, const gchar *);
 
-gboolean ini_save(ini_t *, const gchar *);
+gboolean ini_save (ini_t *, const gchar *);
 
 #endif

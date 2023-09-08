@@ -27,35 +27,34 @@
 #ifndef _FDUPVES_VIDEO_H_
 #define _FDUPVES_VIDEO_H_
 
-typedef struct {
-    /* filename */
-    char *name;
+typedef struct
+{
+  /* filename */
+  char *name;
 
-    /* dirname */
-    char *dir;
+  /* dirname */
+  char *dir;
 
-    /* Format */
-    const char *format;
+  /* Format */
+  const char *format;
 
-    /* Duration */
-    double length;
+  /* Duration */
+  double length;
 
-    /* Size */
-    int size[2];
+  /* Size */
+  int size[2];
 } video_info;
 
-video_info *video_get_info(const char *file);
+video_info *video_get_info (const char *file);
 
-void video_info_free(video_info *info);
+void video_info_free (video_info *info);
 
-int video_get_length(const char *file);
+int video_get_length (const char *file);
 
-int video_time_screenshot(const char *file, int time,
-                          int width, int height,
-                          char *buffer, int buf_len);
+int video_time_screenshot (const char *file, int time, int width, int height,
+                           char *buffer, int buf_len);
 
-int video_time_screenshot_file(const char *file, int time,
-                               int width, int height,
-                               const char *out_file);
+int video_time_screenshot_file (const char *file, int time, int width,
+                                int height, const char *out_file);
 
 #endif

@@ -30,24 +30,24 @@
 
 #include <gtk/gtk.h>
 
-#include <libintl.h>
 #include <glib.h>
+#include <libintl.h>
 
 /*
  * %s indicate the prefix
  * */
-#define FD_SYS_CONF_FILE   "etc/fdupvesrc"
-#define FD_SYS_ICON_DIR    "share/fdupves/icons"
-#define FD_SYS_HELP_FILE   "share/fdupves/fdupves.html"
-#define FD_SYS_LOCALE_DIR  "share/locale"
+#define FD_SYS_CONF_FILE "etc/fdupvesrc"
+#define FD_SYS_ICON_DIR "share/fdupves/icons"
+#define FD_SYS_HELP_FILE "share/fdupves/fdupves.html"
+#define FD_SYS_LOCALE_DIR "share/locale"
 
 /*
  * ~ indicate the user home
  * */
-#define FD_USR_CONF_FILE   "~/.fdupvesrc"
-#define FD_USR_CACHE_FILE  "~/.fdupves.cache"
+#define FD_USR_CONF_FILE "~/.fdupvesrc"
+#define FD_USR_CACHE_FILE "~/.fdupves.cache"
 
-#define _(S)    gettext (S)
+#define _(S) gettext (S)
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -56,15 +56,18 @@
 #define FD_IMAGE 1
 #define FD_VIDEO 2
 #define FD_AUDIO 3
+#define FD_EBOOK 4
 
-gchar *fd_realpath(const gchar *);
+gchar *fd_realpath (const gchar *);
 
-gchar *fd_install_path();
+gchar *fd_install_path ();
 
-int is_image(const char *);
+int is_image (const char *);
 
-int is_video(const gchar *);
+int is_video (const gchar *);
 
-int is_audio(const gchar *);
+int is_audio (const gchar *);
+
+int is_ebook (const gchar *);
 
 #endif
