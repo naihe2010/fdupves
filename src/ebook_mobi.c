@@ -19,36 +19,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
-/* @CFILE ebook.h
+/* @CFILE ebook_mobi.c
  *
  *  Author: Alf <naihe2010@126.com>
  */
 
-#ifndef _FDUPVES_EBOOK_H_
-#define _FDUPVES_EBOOK_H_
+#include "ebook.h"
 
-#include "hash.h"
-#define FDUPVES_TITLE_LEN 1024
-#define FDUPVES_AUTHOR_LEN 256
-#define FDUPVES_ISBN_LEN 128
-
-typedef struct
+int
+mobi_hash (const char *file, ebook_hash_t *ehash)
 {
-  hash_t cover_hash;
-  char title[FDUPVES_TITLE_LEN];
-  char author[FDUPVES_AUTHOR_LEN];
-  char producer[FDUPVES_AUTHOR_LEN];
-  struct
-  {
-    unsigned short year;
-    unsigned char month;
-    unsigned char day;
-  } public_date;
-  char isbn[FDUPVES_ISBN_LEN];
-} ebook_hash_t;
-
-int ebook_file_hash (const char *file, ebook_hash_t *ehash);
-
-int ebook_hash_cmp (ebook_hash_t *ha, ebook_hash_t *hb);
-
-#endif
+  return -1;
+}

@@ -359,7 +359,7 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 int
 find_ebooks (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 {
-  size_t i, j;
+  guint i, j;
   int dist, count;
   ebook_hash_t *hashs;
   find_step step[1];
@@ -374,7 +374,7 @@ find_ebooks (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   step->doing = _ ("Generate ebook hash value");
   for (i = 0; i < ptr->len; ++i)
     {
-      hashs[i] = ebook_file_hash ((gchar *)g_ptr_array_index (ptr, i));
+      ebook_file_hash ((gchar *)g_ptr_array_index (ptr, i), hashs + i);
       step->now = i;
       cb (step, arg);
     }

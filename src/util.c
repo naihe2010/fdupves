@@ -28,6 +28,9 @@
 #include "util.h"
 #include "ini.h"
 
+#include <libxml/parser.h>
+#include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -139,4 +142,102 @@ int
 is_ebook (const gchar *path)
 {
   return is_type (path, g_ini->ebook_suffix);
+}
+
+xmlNodeSetPtr
+xmldoc_get_nodeset (xmlDocPtr doc, const char *xpath, const char *ns,
+                    const char *url)
+{
+  xmlXPathContextPtr xpathctx;
+  xmlXPathObjectPtr xpathobj;
+  xmlNodeSetPtr nodes;
+
+  xpathctx = xmlXPathNewContext (doc);
+  if (xpathctx == NULL)
+    {
+      g_warning ("unable to create new XPath context\n");
+      return NULL;
+    }
+
+  xmlXPathRegisterNs (xpathctx, BAD_CAST ns, BAD_CAST url);
+
+  xpathobj = xmlXPathEvalExpression (BAD_CAST xpath, xpathctx);
+  xmlXPathFreeContext (xpathctx);
+  if (xpathobj == NULL)
+    {
+      g_warning ("unable to evaluate xpath expression \"%s\"\n", xpath);
+      return NULL;
+    }
+
+  if (xmlXPathNodeSetIsEmpty (xpathobj->nodesetval))
+    {
+      g_debug ("unable to get \"%s\"", xpath);
+      xmlXPathFreeObject (xpathobj);
+      return NULL;
+    }
+
+  nodes = xpathobj->nodesetval;
+
+  xmlXPathFreeNodeSetList (xpathobj);
+
+  return nodes;
+}
+
+xmlNodePtr
+xmldoc_get_node (xmlDocPtr doc, const char *xpath, const char *ns,
+                 const char *url)
+{
+  xmlNodePtr node = NULL;
+  xmlNodeSetPtr nodes = xmldoc_get_nodeset (doc, xpath, ns, url);
+  if (nodes != NULL)
+    {
+      node = nodes->nodeTab[0];
+      xmlXPathFreeNodeSet (nodes);
+    }
+
+  return node;
+}
+
+const gchar *
+xml_get_value (const gchar *content, const gchar *xpath, gchar *out,
+               size_t outlen)
+{
+  xmlDocPtr doc;
+  xmlNodePtr node;
+
+  doc = xmlReadMemory (content, strlen (content), NULL, NULL,
+                       XML_PARSE_NOBLANKS | XML_PARSE_NSCLEAN);
+  if (doc == NULL)
+    {
+      return NULL;
+    }
+
+  node = xmldoc_get_node (doc, xpath, "pdfx", "http://ns.adobe.com/pdfx/1.3/");
+  if (node == NULL)
+    {
+      xmlFreeDoc (doc);
+      return NULL;
+    }
+
+  g_snprintf (out, outlen, "%s", node->children->content);
+  xmlFreeDoc (doc);
+
+  return out;
+}
+
+char *
+xmlnode_attr_get (xmlNodePtr node, const char *attr)
+{
+  xmlAttrPtr prop;
+
+  for (prop = node->properties; prop != NULL; prop = prop->next)
+    {
+      if (prop->type == XML_ATTRIBUTE_NODE
+          && strcmp ((char *)(prop->name), attr) == 0)
+        {
+          return g_strdup ((char *)prop->children->content);
+        }
+    }
+
+  return NULL;
 }

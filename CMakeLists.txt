@@ -35,17 +35,23 @@ IF (WIN32)
 ELSE (WIN32)
     PKG_CHECK_MODULES(FFMPEG libavformat libavcodec libavutil libswscale libswresample REQUIRED)
     PKG_CHECK_MODULES(OPENCV opencv REQUIRED)
+    PKG_CHECK_MODULES(XML libxml-2.0 REQUIRED)
+    PKG_CHECK_MODULES(POPPLER poppler-glib REQUIRED)
 ENDIF (WIN32)
 
 INCLUDE_DIRECTORIES(${GTK_INCLUDE_DIRS}
         ${FFMPEG_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}/sqlite3
         ${OPENCV_INCLUDE_DIRS}
+        ${XML_INCLUDE_DIRS}
+        ${POPPLER_INCLUDE_DIRS}
         )
 LINK_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}
         ${GTK_LIBRARY_DIRS}
         ${FFMPEG_LIBRARY_DIRS}
         ${OPENCV_LIBRARY_DIRS}
+        ${XML_LIBRARY_DIRS}
+        ${POPPLER_LIBRARY_DIRS}
         )
 
 IF (WIN32)
@@ -56,29 +62,29 @@ IF (WIN32)
             -DUINT64_C=
             )
 ELSE (WIN32)
-    SET(CMAKE_C_FLAGS "-Wall -D_FILE_OFFSET_BITS=64 -Wno-deprecated-declarations")
-    SET(REQ_LIBRARIES -lm)
+    SET(REQ_LIBRARIES "-lepub")
+    SET(CMAKE_CXX_FLAGS "-Wall -D_FILE_OFFSET_BITS=64 -Wno-deprecated-declarations")
 
     OPTION(FDUPVES_ENABLE_DEBUG "If build binary with debug infomations." OFF)
     IF (FDUPVES_ENABLE_DEBUG)
-        SET(CMAKE_C_FLAGS "-D_DEBUG -g ${CMAKE_C_FLAGS}")
+        SET(CMAKE_CXX_FLAGS "-D_DEBUG -g ${CMAKE_C_FLAGS}")
     ELSE (FDUPVES_ENABLE_DEBUG)
-        SET(CMAKE_C_FLAGS "-O2 -fno-strict-aliasing ${CMAKE_C_FLAGS}")
+        SET(CMAKE_CXX_FLAGS "-O2 -fno-strict-aliasing ${CMAKE_C_FLAGS}")
     ENDIF (FDUPVES_ENABLE_DEBUG)
 
     OPTION(FDUPVES_ENABLE_MUDFLAP "If build binary with mudflap infomations." OFF)
     IF (FDUPVES_ENABLE_MUDFLAP)
-        SET(CMAKE_C_FLAGS "-D_MUDFLAP -fmudflap -fmudflapth -funwind-tables -lmudflapth -rdynamic ${CMAKE_C_FLAGS}")
+        SET(CMAKE_CXX_FLAGS "-D_MUDFLAP -fmudflap -fmudflapth -funwind-tables -lmudflapth -rdynamic ${CMAKE_C_FLAGS}")
     ENDIF (FDUPVES_ENABLE_MUDFLAP)
 
     OPTION(FDUPVES_ENABLE_PROFILER "If build binary with google profiler infomations." OFF)
     IF (FDUPVES_ENABLE_PROFILER)
-        SET(CMAKE_C_FLAGS "-DFDUPVES_ENABLE_PROFILER -lprofiler ${CMAKE_C_FLAGS}")
+        SET(CMAKE_CXX_FLAGS "-DFDUPVES_ENABLE_PROFILER -lprofiler ${CMAKE_C_FLAGS}")
     ENDIF (FDUPVES_ENABLE_PROFILER)
 
     OPTION(FDUPVES_ENABLE_GPROF "If build binary with gprof infomations." OFF)
     IF (FDUPVES_ENABLE_GPROF)
-        SET(CMAKE_C_FLAGS "-pg ${CMAKE_C_FLAGS}")
+        SET(CMAKE_CXX_FLAGS "-pg ${CMAKE_C_FLAGS}")
     ENDIF (FDUPVES_ENABLE_GPROF)
 ENDIF (WIN32)
 

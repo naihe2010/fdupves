@@ -28,6 +28,9 @@ SET(SOURCES
         audio.c
         image.c
         ebook.c
+        ebook_pdf.c
+        ebook_epub.c
+        ebook_mobi.c
         cache.c
         ../sqlite3/sqlite3.c
         ../fingerprint/fingerprint.cpp
@@ -53,6 +56,8 @@ TARGET_LINK_LIBRARIES(fdupves
         ${GTK_LIBRARIES}
         ${FFMPEG_LIBRARIES}
         ${OPENCV_LIBRARIES}
+        ${XML_LIBRARIES}
+        ${POPPLER_LIBRARIES}
         )
 
 ADD_EXECUTABLE(test_mod ${SOURCES} test_mod.c)
