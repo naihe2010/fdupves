@@ -189,6 +189,8 @@ audio_extract(const char *file,
         goto end;
     }
 
+    #if LIBSWRESAMPLE_VERSION_INT < AV_VERSION_INT(4, 0, 100)
+    // 旧版本API（swr_alloc_set_opts）
     convert_ctx = swr_alloc_set_opts(
             NULL,
             AV_CH_LAYOUT_MONO,
@@ -199,6 +201,33 @@ audio_extract(const char *file,
             codec_ctx->sample_rate,
             0,
             NULL);
+    #else
+    // 新版本API（swr_alloc_set_opts2）
+    AVChannelLayout out_ch_layout = AV_CHANNEL_LAYOUT_MONO;
+    AVChannelLayout in_ch_layout;
+    if (av_channel_layout_copy(&in_ch_layout, &codec_ctx->ch_layout) < 0) {
+        // 若复制失败，使用默认声道布局
+        av_channel_layout_default(&in_ch_layout, codec_ctx->ch_layout.nb_channels);
+    }
+
+    convert_ctx = swr_alloc();
+    if (convert_ctx) {
+        int ret = swr_alloc_set_opts2(&convert_ctx,
+                                      &out_ch_layout,
+                                      AV_SAMPLE_FMT_S16,
+                                      ar,
+                                      &in_ch_layout,
+                                      codec_ctx->sample_fmt,
+                                      codec_ctx->sample_rate,
+                                      0,
+                                      NULL);
+        if (ret < 0) {
+            swr_free(&convert_ctx);
+            convert_ctx = NULL;
+        }
+    }
+    #endif
+
     if (convert_ctx == NULL) {
         g_warning (_("Could not allocate resampler context\n"));
         goto end;
