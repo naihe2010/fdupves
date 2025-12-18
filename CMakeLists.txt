@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
 
 PROJECT(fdupves C CXX)
 
@@ -17,24 +17,39 @@ ADD_DEFINITIONS(
         -DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}"
 )
 
-FIND_PACKAGE(PkgConfig)
-PKG_CHECK_MODULES(GTK gtk+-3.0 REQUIRED)
+
 IF (WIN32)
     SET(VCPKG_INSTALLED_DIR "C:/vcpkg/installed"
             CACHE PATH
             "vcpkg installed dir")
     SET(VCPKG_INSTALLED_X64_WINDOWS ${VCPKG_INSTALLED_DIR}/x64-windows)
 
-    SET(FFMPEG_INCLUDE_DIRS ${VCPKG_INSTALLED_X64_WINDOWS}/include)
-    SET(FFMPEG_LIBRARY_DIRS ${VCPKG_INSTALLED_X64_WINDOWS}/lib)
-    SET(FFMPEG_LIBRARIES avformat.lib avcodec.lib avutil.lib swscale.lib swresample.lib)
+    # Try to find pkg-config from vcpkg if not already found
+    IF (NOT PKG_CONFIG_EXECUTABLE)
+        FIND_PROGRAM(PKG_CONFIG_EXECUTABLE NAMES pkg-config pkgconf
+            PATHS
+            "${VCPKG_INSTALLED_X64_WINDOWS}/tools/pkgconf"
+            "${VCPKG_INSTALLED_X64_WINDOWS}/bin"
+            NO_DEFAULT_PATH
+        )
+    ENDIF()
+
+    # Set PKG_CONFIG_PATH to find .pc files in vcpkg
+    SET(ENV{PKG_CONFIG_PATH} "${VCPKG_INSTALLED_X64_WINDOWS}/lib/pkgconfig;$ENV{PKG_CONFIG_PATH}")
+ENDIF (WIN32)
+
+FIND_PACKAGE(PkgConfig REQUIRED)
+
+PKG_CHECK_MODULES(GTK gtk+-3.0 REQUIRED)
+PKG_CHECK_MODULES(FFMPEG libavformat libavcodec libavutil libswscale libswresample REQUIRED)
+
+IF (WIN32)
     SET(OPENCV_INCLUDE_DIRS ${VCPKG_INSTALLED_X64_WINDOWS}/include/opencv4)
     SET(OPENCV_LIBRARY_DIRS ${VCPKG_INSTALLED_X64_WINDOWS}/lib)
     SET(OPENCV_LIBRARIES opencv_imgproc4.lib opencv_core4.lib)
 
-    SET(MUPDF_LIBRARIES libmupdf.lib openjp2.lib jpeg.lib jbig2dec.lib gumbo.lib)
+    SET(MUPDF_LIBRARIES libmupdf.lib freetype.lib openjp2.lib jpeg.lib libpng16.lib jbig2dec.lib gumbo.lib zlib.lib)
 ELSE (WIN32)
-    PKG_CHECK_MODULES(FFMPEG libavformat libavcodec libavutil libswscale libswresample REQUIRED)
     PKG_CHECK_MODULES(OPENCV opencv4 REQUIRED)
 
     SET(MUPDF_INCLUDE_DIRS "/usr/include/mupdf")

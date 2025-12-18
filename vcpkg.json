@@ -1,14 +1,9 @@
 {
   "dependencies": [
+    "pkgconf",
     "gtk3",
     "ffmpeg",
     "opencv4",
     "libmupdf"
-  ],
-  "overrides": [
-    {"name": "gtk3", "version": "3.24.34"},
-    {"name": "ffmpeg", "version": "6.1.1"},
-    {"name": "opencv4", "version": "4.10.0"},
-    {"name": "libmupdf", "version": "1.24.11"}
   ]
 }
