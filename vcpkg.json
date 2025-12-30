@@ -1,9 +1,10 @@
 {
-  "dependencies": [
-    "pkgconf",
-    "gtk3",
-    "ffmpeg",
-    "opencv4",
-    "libmupdf"
-  ]
+    "dependencies": [
+	"pkgconf",
+	"gtk3",
+	"libadwaita",
+	"ffmpeg",
+	"opencv4",
+	"libmupdf"
+    ]
 }

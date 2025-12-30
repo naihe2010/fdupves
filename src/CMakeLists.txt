@@ -113,10 +113,14 @@ IF (WIN32)
 
 	INSTALL(FILES ${VCPKG_LIB_DIR}/gdk-pixbuf-2.0/2.10.0/loaders.cache
           DESTINATION lib/gdk-pixbuf-2.0/2.10.0)
-	INSTALL(FILES ${VCPKG_SHARE_DIR}/icons/Adwaita/index.theme
-          DESTINATION share/icons/Adwaita)
-	INSTALL(DIRECTORY ${VCPKG_SHARE_DIR}/icons/Adwaita/16x16
-          DESTINATION share/icons/Adwaita)
+	IF (EXISTS ${VCPKG_SHARE_DIR}/icons/Adwaita/index.theme)
+	  INSTALL(FILES ${VCPKG_SHARE_DIR}/icons/Adwaita/index.theme
+            DESTINATION share/icons/Adwaita)
+	ENDIF()
+	IF (EXISTS ${VCPKG_SHARE_DIR}/icons/Adwaita/16x16)
+	  INSTALL(DIRECTORY ${VCPKG_SHARE_DIR}/icons/Adwaita/16x16
+            DESTINATION share/icons/Adwaita)
+	ENDIF()
 
 	INSTALL(FILES ${VCPKG_SHARE_DIR}/locale/zh_CN/LC_MESSAGES/gtk30.mo
           DESTINATION share/locale/zh_CN/LC_MESSAGES)
