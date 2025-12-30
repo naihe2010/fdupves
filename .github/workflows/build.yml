@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          dnf install -y gcc-c++ cmake ninja-build git pkgconf-pkg-config gtk3-devel ffmpeg-free-devel opencv-devel mupdf-devel rpm-build gettext-devel
+          dnf install -y gcc-c++ cmake ninja-build git pkgconf-pkg-config gtk3-devel ffmpeg-free-devel opencv-devel mupdf-devel rpm-build gettext
       - name: Configure CMake
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
@@ -26,8 +26,9 @@ jobs:
 
       - name: Package
         run: |
+          ls -l ${{ github.workspace }}/po
           cd build
-          cpack -G RPM
+          cpack -G RPM --verbose
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
