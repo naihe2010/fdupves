@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    branches: [ "master", "feat*" ]
+  pull_request:
+    branches: [ "master", "feat*" ]
+
+jobs:
+  build-linux:
+    name: Fedora 43 Build
+    runs-on: ubuntu-latest
+    container: fedora:43
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf install -y gcc-c++ cmake ninja-build git pkgconf-pkg-config gtk3-devel ffmpeg-free-devel opencv-devel mupdf-devel rpm-build
+      - name: Configure CMake
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Package
+        run: |
+          cd build
+          cpack -G RPM
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdupves-linux-rpm
+          path: build/*.rpm
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows 11 Build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build with script
+        run: ./windows-build.ps1
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdupves-windows-installer
+          path: build/cmake-build/*.exe
+          if-no-files-found: error
