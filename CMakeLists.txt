@@ -103,7 +103,7 @@ FIND_PACKAGE(Gettext)
 IF (GETTEXT_FOUND)
   ADD_SUBDIRECTORY(po)
   IF (!WIN32)
-    ADD_DEPENDENCIES(fdupves translate)
+    ADD_DEPENDENCIES(fdupves gmofiles)
   ENDIF ()
 ELSE (GETTEXT_FOUND)
   INSTALL(FILES po/zh_CN.gmo

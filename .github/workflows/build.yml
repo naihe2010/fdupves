@@ -21,8 +21,8 @@ jobs:
 
       - name: Build by cmake
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release --verbose
+          cmake --build build --verbose
           cd build
           cpack -G RPM --verbose
 
