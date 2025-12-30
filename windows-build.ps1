@@ -28,6 +28,32 @@ function Get-VisualStudioGenerator {
     return $null
 }
 
+function Add-DependencyToolsToPath {
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $installPath = & $vswhere -latest -property installationPath
+        if ($installPath) {
+            $vcToolsDir = Join-Path $installPath "VC\Tools\MSVC"
+            if (Test-Path $vcToolsDir) {
+                $msvcVersions = Get-ChildItem -Directory $vcToolsDir | Sort-Object Name -Descending
+                foreach ($v in $msvcVersions) {
+                    $dumpbinDir = Join-Path $v.FullName "bin\Hostx64\x64"
+                    $dumpbin = Join-Path $dumpbinDir "dumpbin.exe"
+                    if (Test-Path $dumpbin) {
+                        $env:PATH = "$dumpbinDir;$env:PATH"
+                        break
+                    }
+                }
+            }
+            $llvmDir = Join-Path $installPath "VC\Tools\Llvm\bin"
+            $llvmObjdump = Join-Path $llvmDir "llvm-objdump.exe"
+            if (Test-Path $llvmObjdump) {
+                $env:PATH = "$llvmDir;$env:PATH"
+            }
+        }
+    }
+}
+
 $SrcDir = $PSScriptRoot
 if ([string]::IsNullOrEmpty($VcpkgDir)) {
     $VcpkgDir = Join-Path $BuildDir "vcpkg"
@@ -69,10 +95,11 @@ New-Item -ItemType Directory -Path $CMakeBuildDir -Force | Out-Null
 Write-Host "Configuring with CMake..."
 try {
     Push-Location $CMakeBuildDir
-    
+
     # Add vcpkg installed bin directory to PATH
     $env:PATH = "$VcpkgInstalledDir\x64-windows\bin;$env:PATH"
-    
+    Add-DependencyToolsToPath
+
     $generator = Get-VisualStudioGenerator
     $cmakeArgs = @("-A", "x64", "-DCMAKE_BUILD_TYPE=$BuildType", "-DVCPKG_INSTALLED_DIR=$VcpkgInstalledDir", "-DVCPKG_TARGET_TRIPLET=x64-windows", "-DCMAKE_TOOLCHAIN_FILE=$VcpkgDir/scripts/buildsystems/vcpkg.cmake", $PSScriptRoot)
     if ($generator) {
