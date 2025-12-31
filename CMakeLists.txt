@@ -99,13 +99,8 @@ ENDIF (WIN32)
 
 ADD_SUBDIRECTORY(src)
 
-FIND_PACKAGE(Gettext)
-IF (GETTEXT_FOUND AND GETTEXT_XGETTEXT_EXECUTABLE AND GETTEXT_MSGMERGE_EXECUTABLE AND GETTEXT_MSGFMT_EXECUTABLE)
-  ADD_SUBDIRECTORY(po)
-  ADD_DEPENDENCIES(fdupves gmofiles)
-ELSE ()
-  MESSAGE(FATAL_ERROR "Gettext tools (xgettext/msgmerge/msgfmt) not found; translations (gmo) are required.")
-ENDIF ()
+ADD_SUBDIRECTORY(po)
+ADD_DEPENDENCIES(fdupves gmofiles)
 
 ADD_EXECUTABLE(sqlite3 sqlite3/sqlite3.h sqlite3/sqlite3.c sqlite3/shell.c)
 
