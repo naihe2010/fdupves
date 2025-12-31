@@ -1,11 +1,11 @@
 {
     "dependencies": [
 	"ffmpeg",
-	"gettext"
+	"gettext",
 	"gtk3",
 	"libadwaita",
 	"libmupdf",
 	"opencv4",
-	"pkgconf",
+	"pkgconf"
     ]
 }
