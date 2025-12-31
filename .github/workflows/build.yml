@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          dnf install -y gcc-c++ cmake ninja-build git pkgconf-pkg-config gtk3-devel ffmpeg-free-devel opencv-devel mupdf-devel rpm-build gettext
+          dnf install -y gcc-c++ cmake ninja-build git pkgconf-pkg-config gtk3-devel ffmpeg-free-devel opencv-devel mupdf-devel rpm-build gettext gettext-devel
 
       - name: Build by cmake
         run: |

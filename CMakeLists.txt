@@ -17,7 +17,6 @@ ADD_DEFINITIONS(
   -DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}"
 )
 
-
 IF (WIN32)
   SET(VCPKG_INSTALLED_DIR "C:/vcpkg/installed"
     CACHE PATH
@@ -101,15 +100,11 @@ ENDIF (WIN32)
 ADD_SUBDIRECTORY(src)
 
 FIND_PACKAGE(Gettext)
-IF (GETTEXT_FOUND AND GETTEXT_XGETTEXT_EXECUTABLE)
+IF (GETTEXT_FOUND AND GETTEXT_XGETTEXT_EXECUTABLE AND GETTEXT_MSGMERGE_EXECUTABLE AND GETTEXT_MSGFMT_EXECUTABLE)
   ADD_SUBDIRECTORY(po)
-  IF (!WIN32)
-    ADD_DEPENDENCIES(fdupves gmofiles)
-  ENDIF ()
+  ADD_DEPENDENCIES(fdupves gmofiles)
 ELSE ()
-  INSTALL(FILES po/zh_CN.gmo
-    DESTINATION share/locale/zh_CN/LC_MESSAGES
-    RENAME fdupves.mo)
+  MESSAGE(FATAL_ERROR "Gettext tools (xgettext/msgmerge/msgfmt) not found; translations (gmo) are required.")
 ENDIF ()
 
 ADD_EXECUTABLE(sqlite3 sqlite3/sqlite3.h sqlite3/sqlite3.c sqlite3/shell.c)
