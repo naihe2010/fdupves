@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [ "master", "feat*" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "master", "feat*" ]
+    branches: [ "master" ]
 
 jobs:
   build-linux:
@@ -32,6 +32,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/vcpkg_installed
+            build/vcpkg
+          key: windows-vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            windows-vcpkg-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build with script
         run: ./windows-build.ps1
