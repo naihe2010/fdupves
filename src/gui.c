@@ -2409,14 +2409,61 @@ gui_process_step (gui_t *gui, const find_step *step)
     }
 }
 
+static same_node *
+gui_find_same_node (GSList *slist, gint type, const gchar *file)
+{
+  GSList *cur, *fslist;
+  same_node *node;
+  file_node *fn;
+
+  for (cur = slist; cur; cur = g_slist_next (cur))
+    {
+      node = cur->data;
+
+      if (node->type != type)
+        {
+          continue;
+        }
+
+      for (fslist = node->files; fslist; fslist = g_slist_next (fslist))
+        {
+          fn = fslist->data;
+
+          if (strcmp (fn->path, file) == 0)
+            {
+              return node;
+            }
+        }
+    }
+
+  return NULL;
+}
+
+static void
+gui_append_same_tree (gui_t *gui, same_node *node, file_node *fn)
+{
+  GtkTreeIter itr[1], itrc[1];
+  GtkTreePath *path;
+
+  if (!node->show)
+    {
+      return;
+    }
+
+  path = gtk_tree_row_reference_get_path (node->treerowref);
+  gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr, path);
+  gtk_tree_store_append (gui->result_store, itrc, itr);
+  file_node_to_tree_iter (fn, gui->result_store, itrc);
+  gtk_tree_path_free (path);
+}
+
 static GSList *
 gui_append_same_slist (gui_t *gui, GSList *slist, const gchar *afile,
                        const gchar *bfile, same_type type)
 {
-  GSList *cur, *fslist;
-  same_node *node;
+  GSList *fslist;
+  same_node *node, *anode, *bnode;
   file_node *fn, *fn2;
-  gboolean afind, bfind;
   GtkTreeIter itr[1], itrc[1];
   GtkTreePath *path;
   int filetype;
@@ -2435,66 +2482,63 @@ gui_append_same_slist (gui_t *gui, GSList *slist, const gchar *afile,
       filetype = FD_EBOOK;
     }
 
-  for (cur = slist; cur; cur = g_slist_next (cur))
+  if (strcmp (afile, bfile) == 0)
     {
-      node = cur->data;
+      return slist;
+    }
 
-      if (node->type != filetype)
+  anode = gui_find_same_node (slist, filetype, afile);
+  bnode = gui_find_same_node (slist, filetype, bfile);
+
+  if (anode && anode == bnode)
+    {
+      return slist;
+    }
+  else if (anode && bnode)
+    {
+      if (!anode->show && bnode->show)
         {
-          continue;
+          node = anode;
+          anode = bnode;
+          bnode = node;
         }
 
-      afind = bfind = FALSE;
-      for (fslist = node->files; fslist; fslist = g_slist_next (fslist))
+      if (bnode->show)
+        {
+          path = gtk_tree_row_reference_get_path (bnode->treerowref);
+          gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
+                                   path);
+          gtk_tree_store_remove (gui->result_store, itr);
+          gtk_tree_path_free (path);
+        }
+
+      for (fslist = bnode->files; fslist; fslist = g_slist_next (fslist))
         {
           fn = fslist->data;
-
-          if (strcmp (fn->path, afile) == 0)
-            {
-              afind = TRUE;
-            }
-          else if (strcmp (fn->path, bfile) == 0)
-            {
-              bfind = TRUE;
-            }
+          fn->node = anode;
+          gui_append_same_tree (gui, anode, fn);
         }
 
-      if (afind && bfind)
-        {
-          return slist;
-        }
-      else if (afind)
-        {
-          fn = file_node_new (node, bfile, filetype);
+      anode->files = g_slist_concat (anode->files, bnode->files);
+      bnode->files = NULL;
+      slist = g_slist_remove (slist, bnode);
+      same_node_free (bnode);
 
-          if (node->show)
-            {
-              path = gtk_tree_row_reference_get_path (node->treerowref);
-              gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
-                                       path);
-              gtk_tree_store_append (gui->result_store, itrc, itr);
-              file_node_to_tree_iter (fn, gui->result_store, itrc);
-              gtk_tree_path_free (path);
-            }
+      return slist;
+    }
+  else if (anode)
+    {
+      fn = file_node_new (anode, bfile, filetype);
+      gui_append_same_tree (gui, anode, fn);
 
-          return slist;
-        }
-      else if (bfind)
-        {
-          fn = file_node_new (node, afile, filetype);
+      return slist;
+    }
+  else if (bnode)
+    {
+      fn = file_node_new (bnode, afile, filetype);
+      gui_append_same_tree (gui, bnode, fn);
 
-          if (node->show)
-            {
-              path = gtk_tree_row_reference_get_path (node->treerowref);
-              gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
-                                       path);
-              gtk_tree_store_append (gui->result_store, itrc, itr);
-              file_node_to_tree_iter (fn, gui->result_store, itrc);
-              gtk_tree_path_free (path);
-            }
-
-          return slist;
-        }
+      return slist;
     }
 
   node = g_malloc0 (sizeof (same_node));
