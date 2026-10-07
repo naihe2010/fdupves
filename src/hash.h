@@ -27,6 +27,7 @@
 #ifndef _FDUPVES_HASH_H_
 #define _FDUPVES_HASH_H_
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 
 enum hash_type
@@ -34,8 +35,11 @@ enum hash_type
   FDUPVES_IMAGE_HASH,
   FDUPVES_IMAGE_PHASH,
   FDUPVES_AUDIO_HASH,
+  FDUPVES_IMAGE_DHASH,
   FDUPVES_HASH_ALGS_CNT,
 };
+
+#define FDUPVES_PHASH_LEN 32
 
 extern const char *hash_phrase[];
 
@@ -55,6 +59,10 @@ hash_t video_time_hash (const char *, float);
 hash_t video_time_phash (const char *, float);
 
 hash_t image_file_phash (const char *);
+
+int image_file_hashes (const char *, hash_t *, hash_t *);
+
+hash_t pixbuf_phash (GdkPixbuf *);
 
 hash_array_t *audio_hashes (const char *);
 

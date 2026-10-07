@@ -27,6 +27,7 @@
 #include <glib.h>
 #include <libavutil/mathematics.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include "cache.h"
 #include "hash.h"
@@ -34,12 +35,9 @@
 #include "util.h"
 #include "video.h"
 
-#define FDUPVES_PHASH_LEN 32
 #define FDUPVES_DCT_LEN 8
 
-static hash_t pixbuf_phash (GdkPixbuf *);
-
-static gboolean buffer_dct (const unsigned char *, unsigned char *, gsize);
+static gboolean buffer_dct (const gdouble *, gdouble *, gsize);
 
 static const gdouble *get_coefficient ();
 
@@ -47,44 +45,16 @@ static const gdouble *get_coefficient_t ();
 
 static void matrix_mul (const gdouble *, const gdouble *, gdouble *);
 
+static int dct_cmp (gconstpointer, gconstpointer);
+
 hash_t
 image_file_phash (const char *file)
 {
-  GdkPixbuf *buf;
-  hash_t h;
-  GError *err;
+  hash_t phash, dhash;
 
-  if (g_cache)
-    {
-      if (cache_get (g_cache, file, 0, FDUPVES_IMAGE_PHASH, &h))
-        {
-          return h;
-        }
-    }
+  image_file_hashes (file, &phash, &dhash);
 
-  err = NULL;
-  buf = fdupves_gdkpixbuf_load_file_at_size (file, FDUPVES_PHASH_LEN,
-                                             FDUPVES_PHASH_LEN, &err);
-
-  if (err)
-    {
-      g_warning ("Load file: %s to pixbuf failed: %s", file, err->message);
-      g_error_free (err);
-      return 0;
-    }
-
-  h = pixbuf_phash (buf);
-  g_object_unref (buf);
-
-  if (g_cache)
-    {
-      if (h)
-        {
-          cache_set (g_cache, file, 0, FDUPVES_IMAGE_PHASH, h);
-        }
-    }
-
-  return h;
+  return phash;
 }
 
 hash_t
@@ -156,15 +126,16 @@ video_time_phash (const char *file, float offset)
   return h;
 }
 
-static hash_t
+hash_t
 pixbuf_phash (GdkPixbuf *pixbuf)
 {
   int width, height, rowstride, n_channels;
   guchar *pixels, *p;
-  int sum, avg, x, y, off;
+  int x, y, off, min, max;
   hash_t hash;
-  unsigned char *grays, dct[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN],
-      dctc[FDUPVES_DCT_LEN * FDUPVES_DCT_LEN];
+  gdouble median, grays[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN],
+      dct[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN],
+      dctc[FDUPVES_DCT_LEN * FDUPVES_DCT_LEN - 1];
 
   n_channels = gdk_pixbuf_get_n_channels (pixbuf);
 
@@ -173,84 +144,88 @@ pixbuf_phash (GdkPixbuf *pixbuf)
 
   width = gdk_pixbuf_get_width (pixbuf);
   height = gdk_pixbuf_get_height (pixbuf);
+  g_return_val_if_fail (
+      width == FDUPVES_PHASH_LEN && height == FDUPVES_PHASH_LEN, 0);
 
   rowstride = gdk_pixbuf_get_rowstride (pixbuf);
   pixels = gdk_pixbuf_get_pixels (pixbuf);
 
-  grays = g_new (unsigned char, width *height);
   off = 0;
-  for (y = 0; y < width; ++y)
+  min = 255;
+  max = 0;
+  for (y = 0; y < height; ++y)
     {
-      for (x = 0; x < height; ++x)
+      for (x = 0; x < width; ++x)
         {
           p = pixels + y * rowstride + x * n_channels;
           grays[off] = (p[0] * 30 + p[1] * 59 + p[2] * 11) / 100;
+          min = MIN (min, (int)grays[off]);
+          max = MAX (max, (int)grays[off]);
           ++off;
         }
     }
 
-  buffer_dct (grays, dct, sizeof dct);
-
-  sum = 0;
-  off = 0;
-  for (x = 0; x < FDUPVES_DCT_LEN; ++x)
+  if (max - min < 2)
     {
-      for (y = 0; y < FDUPVES_DCT_LEN; ++y)
+      return 0;
+    }
+
+  buffer_dct (grays, dct, G_N_ELEMENTS (dct));
+
+  off = 0;
+  for (y = 0; y < FDUPVES_DCT_LEN; ++y)
+    {
+      for (x = 0; x < FDUPVES_DCT_LEN; ++x)
         {
-          sum += dct[x * FDUPVES_PHASH_LEN + y];
-          dctc[off] = dct[x * FDUPVES_PHASH_LEN + y];
-          ++off;
+          if (x || y)
+            {
+              dctc[off] = dct[y * FDUPVES_PHASH_LEN + x];
+              ++off;
+            }
         }
     }
-  avg = sum / off;
+  qsort (dctc, off, sizeof dctc[0], dct_cmp);
+  median = dctc[off / 2];
 
   hash = 0;
-  for (x = 0; x < off; ++x)
+  for (y = 0; y < FDUPVES_DCT_LEN; ++y)
     {
-      if (dctc[x] >= avg)
+      for (x = 0; x < FDUPVES_DCT_LEN; ++x)
         {
-          hash |= (((hash_t)1) << x);
+          if ((x || y) && dct[y * FDUPVES_PHASH_LEN + x] > median)
+            {
+              hash |= ((hash_t)1) << (y * FDUPVES_DCT_LEN + x);
+            }
         }
     }
-
-  g_free (grays);
 
   return hash;
 }
 
+static int
+dct_cmp (gconstpointer a, gconstpointer b)
+{
+  gdouble da, db;
+
+  da = *(const gdouble *)a;
+  db = *(const gdouble *)b;
+
+  return (da > db) - (da < db);
+}
+
 static gboolean
-buffer_dct (const unsigned char *pix, unsigned char *out_pix, gsize out_len)
+buffer_dct (const gdouble *pix, gdouble *out_pix, gsize out_len)
 {
   const gdouble *quotient, *quotientT;
-  gdouble matrix[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN],
-      temp[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN];
-  gsize i, j;
+  gdouble temp[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN];
 
   g_assert (out_len >= FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN);
-
-  for (i = 0; i < FDUPVES_PHASH_LEN; i++)
-    {
-      for (j = 0; j < FDUPVES_PHASH_LEN; j++)
-        {
-          matrix[i * FDUPVES_PHASH_LEN + j]
-              = (gdouble)(pix[i * FDUPVES_PHASH_LEN + j]);
-        }
-    }
 
   quotient = get_coefficient ();
   quotientT = get_coefficient_t ();
 
-  matrix_mul (quotient, matrix, temp);
-  matrix_mul (temp, quotientT, matrix);
-
-  for (i = 0; i < FDUPVES_PHASH_LEN; i++)
-    {
-      for (j = 0; j < FDUPVES_PHASH_LEN; j++)
-        {
-          out_pix[i * FDUPVES_PHASH_LEN + j]
-              = (unsigned char)matrix[i * FDUPVES_PHASH_LEN + j];
-        }
-    }
+  matrix_mul (quotient, pix, temp);
+  matrix_mul (temp, quotientT, out_pix);
 
   return TRUE;
 }

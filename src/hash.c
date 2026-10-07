@@ -40,11 +40,63 @@ const char *hash_phrase[] = {
   "image_hash",
   "image_phash",
   "audio_hash",
+  "image_dhash",
 };
 
 static hash_t pixbuf_hash (GdkPixbuf *);
 
+static hash_t pixbuf_dhash (GdkPixbuf *);
+
 #define FDUPVES_HASH_LEN 8
+
+int
+image_file_hashes (const char *file, hash_t *phash, hash_t *dhash)
+{
+  GdkPixbuf *buf, *orig, *small;
+  GError *err;
+
+  if (g_cache)
+    {
+      if (cache_get (g_cache, file, 0, FDUPVES_IMAGE_PHASH, phash)
+          && cache_get (g_cache, file, 0, FDUPVES_IMAGE_DHASH, dhash))
+        {
+          return 0;
+        }
+    }
+
+  *phash = 0;
+  *dhash = 0;
+
+  orig = fdupves_gdkpixbuf_load_file_at_size (file, FDUPVES_PHASH_LEN,
+                                              FDUPVES_PHASH_LEN, &err);
+  if (err)
+    {
+      g_warning ("Load file: %s to pixbuf failed: %s", file, err->message);
+      g_error_free (err);
+      return -1;
+    }
+
+  buf = gdk_pixbuf_apply_embedded_orientation (orig);
+  g_object_unref (orig);
+
+  small = gdk_pixbuf_scale_simple (buf, FDUPVES_HASH_LEN + 1, FDUPVES_HASH_LEN,
+                                   GDK_INTERP_BILINEAR);
+  *phash = pixbuf_phash (buf);
+  *dhash = pixbuf_dhash (small);
+  g_object_unref (small);
+  g_object_unref (buf);
+
+  if (g_cache)
+    {
+      if (*phash && *dhash)
+        {
+          cache_set (g_cache, file, 0, FDUPVES_IMAGE_PHASH, *phash);
+          cache_set (g_cache, file, 0, FDUPVES_IMAGE_DHASH, *dhash);
+        }
+    }
+
+  return 0;
+}
 
 hash_t
 image_file_hash (const char *file)
@@ -156,6 +208,41 @@ pixbuf_hash (GdkPixbuf *pixbuf)
     }
 
   g_free (grays);
+
+  return hash;
+}
+
+static hash_t
+pixbuf_dhash (GdkPixbuf *pixbuf)
+{
+  int rowstride, n_channels, x, y;
+  guchar *pixels, *p;
+  int grays[FDUPVES_HASH_LEN + 1];
+  hash_t hash;
+
+  g_assert (gdk_pixbuf_get_width (pixbuf) == FDUPVES_HASH_LEN + 1);
+  g_assert (gdk_pixbuf_get_height (pixbuf) == FDUPVES_HASH_LEN);
+
+  n_channels = gdk_pixbuf_get_n_channels (pixbuf);
+  rowstride = gdk_pixbuf_get_rowstride (pixbuf);
+  pixels = gdk_pixbuf_get_pixels (pixbuf);
+
+  hash = 0;
+  for (y = 0; y < FDUPVES_HASH_LEN; ++y)
+    {
+      for (x = 0; x < FDUPVES_HASH_LEN + 1; ++x)
+        {
+          p = pixels + y * rowstride + x * n_channels;
+          grays[x] = (p[0] * 30 + p[1] * 59 + p[2] * 11) / 100;
+        }
+      for (x = 0; x < FDUPVES_HASH_LEN; ++x)
+        {
+          if (grays[x] < grays[x + 1])
+            {
+              hash |= ((hash_t)1) << (y * FDUPVES_HASH_LEN + x);
+            }
+        }
+    }
 
   return hash;
 }

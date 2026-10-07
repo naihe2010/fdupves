@@ -33,6 +33,7 @@
 #include "util.h"
 #include "video.h"
 
+#include <glib/gstdio.h>
 #include <string.h>
 
 #ifndef FD_COMP_CNT
@@ -75,25 +76,50 @@ static int audio_hashes_func (struct st_file *file);
 
 static void st_file_free (struct st_file *);
 
+static gboolean
+same_file_content (const char *a, const char *b)
+{
+  gchar *abuf, *bbuf;
+  gsize alen, blen;
+  gboolean same;
+
+  abuf = NULL;
+  bbuf = NULL;
+  same = g_file_get_contents (a, &abuf, &alen, NULL)
+         && g_file_get_contents (b, &bbuf, &blen, NULL) && alen == blen
+         && memcmp (abuf, bbuf, alen) == 0;
+  g_free (abuf);
+  g_free (bbuf);
+
+  return same;
+}
+
 int
 find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 {
   size_t i, j;
-  int dist, count;
-  hash_t *hashs;
+  int count;
+  gboolean same;
+  hash_t *phashs, *dhashs;
+  goffset *sizes;
+  GStatBuf st[1];
+  const char *file;
   find_step step[1];
 
   count = 0;
 
-  hashs = g_new0 (hash_t, ptr->len);
-  g_return_val_if_fail (hashs, 0);
+  phashs = g_new0 (hash_t, ptr->len);
+  dhashs = g_new0 (hash_t, ptr->len);
+  sizes = g_new0 (goffset, ptr->len);
 
   step->found = FALSE;
   step->total = ptr->len;
   step->doing = _ ("Generate image hash value");
   for (i = 0; i < ptr->len; ++i)
     {
-      hashs[i] = image_file_hash ((gchar *)g_ptr_array_index (ptr, i));
+      file = g_ptr_array_index (ptr, i);
+      image_file_hashes (file, phashs + i, dhashs + i);
+      sizes[i] = g_stat (file, st) == 0 ? st->st_size : -1;
       step->now = i;
       cb (step, arg);
     }
@@ -104,8 +130,17 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
     {
       for (j = i + 1; j < ptr->len; ++j)
         {
-          dist = hash_cmp (hashs[i], hashs[j]);
-          if (dist < g_ini->same_image_distance)
+          same = sizes[i] >= 0 && sizes[i] == sizes[j]
+                 && same_file_content (g_ptr_array_index (ptr, i),
+                                       g_ptr_array_index (ptr, j));
+          if (!same)
+            {
+              same = hash_cmp (phashs[i], phashs[j])
+                         < g_ini->same_image_distance
+                     && hash_cmp (dhashs[i], dhashs[j])
+                            < g_ini->same_image_distance;
+            }
+          if (same)
             {
               step->afile = g_ptr_array_index (ptr, i);
               step->bfile = g_ptr_array_index (ptr, j);
@@ -121,7 +156,9 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
       cb (step, arg);
     }
 
-  g_free (hashs);
+  g_free (phashs);
+  g_free (dhashs);
+  g_free (sizes);
 
   return count;
 }
