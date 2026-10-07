@@ -171,23 +171,28 @@ hash_cmp (hash_t a, hash_t b)
       return FDUPVES_HASH_LEN * FDUPVES_HASH_LEN; /* max invalid distance */
     }
 
+  if (a == ~0ULL || b == ~0ULL)
+    {
+      return FDUPVES_HASH_LEN * FDUPVES_HASH_LEN;
+    }
+
   c = a ^ b;
   switch (g_ini->compare_area)
     {
     case FD_COMPARE_TOP:
-      c = c & 0xFFFFFF00ULL;
+      c = c & 0x00000000FFFFFFFFULL;
       break;
 
     case FD_COMPARE_BOTTOM:
-      c = c & 0x00FFFFFFULL;
+      c = c & 0xFFFFFFFF00000000ULL;
       break;
 
     case FD_COMPARE_LEFT:
-      c = c & 0xFCFCFCFCULL;
+      c = c & 0x0F0F0F0F0F0F0F0FULL;
       break;
 
     case FD_COMPARE_RIGHT:
-      c = c & 0x3F3F3F3FULL;
+      c = c & 0xF0F0F0F0F0F0F0F0ULL;
       break;
 
     default:
@@ -223,8 +228,13 @@ video_time_hash (const char *file, float offset)
   buffer = g_malloc (len);
   g_return_val_if_fail (buffer, 0);
 
-  video_time_screenshot (file, offset, FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
-                         buffer, len);
+  if (video_time_screenshot (file, offset, FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
+                             buffer, len)
+      < 0)
+    {
+      g_free (buffer);
+      return 0;
+    }
 
   h = image_buffer_hash (buffer, len);
   g_free (buffer);

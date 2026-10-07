@@ -45,6 +45,8 @@ cache_t *g_cache;
 #define strtouq _strtoui64
 #endif
 
+#define CACHE_VERSION 1
+
 struct cache_s
 {
   sqlite3 *db;
@@ -53,6 +55,8 @@ struct cache_s
 
 static gboolean cache_exec (cache_t *cache, int (*cb) (sqlite3_stmt *, void *),
                             void *arg, const char *sql, const char *fmt, ...);
+static void cache_remove_by_id (cache_t *cache, int media_id);
+static int get_id_callback (sqlite3_stmt *stmt, void *para);
 
 const char *init_text
     = "create table media(id INTEGER PRIMARY KEY AUTOINCREMENT, path text, "
@@ -86,6 +90,7 @@ cache_open (const gchar *file)
   cache_t *cache;
   gchar *dirname;
   gboolean needInit;
+  int version;
 
   cache = g_malloc (sizeof (cache_t));
   g_return_val_if_fail (cache, NULL);
@@ -111,6 +116,16 @@ cache_open (const gchar *file)
   if (needInit)
     {
       cache_init (cache);
+    }
+
+  version = 0;
+  cache_exec (cache, get_id_callback, &version, "pragma user_version;", "");
+  if (version < CACHE_VERSION)
+    {
+      cache_exec (cache, NULL, NULL, "delete from hash;", "");
+      cache_exec (cache, NULL, NULL,
+                  "pragma user_version = " G_STRINGIFY (CACHE_VERSION) ";",
+                  "");
     }
 
   if (g_cache == NULL)
@@ -239,6 +254,16 @@ get_hash_array_callback (sqlite3_stmt *stmt, void *para)
   return 0;
 }
 
+static long
+cache_stat_mtime (GStatBuf *buf)
+{
+#if WIN32
+  return buf->st_mtime;
+#else
+  return buf->st_mtim.tv_sec;
+#endif
+}
+
 static int
 cache_get_media_id (cache_t *cache, const gchar *file)
 {
@@ -259,17 +284,10 @@ cache_get_media_id (cache_t *cache, const gchar *file)
           return -1;
         }
 
-#if WIN32
       ret = cache_exec (
           cache, NULL, NULL,
           "insert into media(path, size, mtime) values(?, ?, ?);",
-          "%s, %l, %l", file, buf->st_size, buf->st_mtime);
-#else
-      ret = cache_exec (
-          cache, NULL, NULL,
-          "insert into media(path, size, mtime) values(?, ?, ?);",
-          "%s, %l, %l", file, buf->st_size, buf->st_mtim.tv_sec);
-#endif
+          "%s, %l, %l", file, buf->st_size, cache_stat_mtime (buf));
       g_return_val_if_fail (ret, -1);
 
       ret = cache_exec (cache, get_id_callback, &media_id,
@@ -280,6 +298,35 @@ cache_get_media_id (cache_t *cache, const gchar *file)
   return media_id;
 }
 
+static gboolean
+cache_drop_if_stale (cache_t *cache, int media_id, const gchar *file)
+{
+  GStatBuf buf[1];
+  int same_id;
+
+  if (g_stat (file, buf) != 0)
+    {
+      return FALSE;
+    }
+
+  same_id = -1;
+  if (!cache_exec (cache, get_id_callback, &same_id,
+                   "select id from media where id=? and size=? and mtime=?;",
+                   "%d, %l, %l", media_id, buf->st_size,
+                   cache_stat_mtime (buf)))
+    {
+      return FALSE;
+    }
+
+  if (same_id != -1)
+    {
+      return FALSE;
+    }
+
+  cache_remove_by_id (cache, media_id);
+  return TRUE;
+}
+
 gboolean
 cache_get (cache_t *cache, const gchar *file, float off, int alg, hash_t *hp)
 {
@@ -288,6 +335,8 @@ cache_get (cache_t *cache, const gchar *file, float off, int alg, hash_t *hp)
 
   media_id = cache_get_media_id (cache, file);
   g_return_val_if_fail (media_id != -1, FALSE);
+  if (cache_drop_if_stale (cache, media_id, file))
+    return FALSE;
 
   *hp = 0;
   ret = cache_exec (
@@ -326,6 +375,8 @@ cache_gets (cache_t *cache, const gchar *file, int alg,
 
   media_id = cache_get_media_id (cache, file);
   g_return_val_if_fail (media_id != -1, FALSE);
+  if (cache_drop_if_stale (cache, media_id, file))
+    return FALSE;
 
   *pHashArray = NULL;
   ret = cache_exec (
@@ -420,6 +471,8 @@ cache_get_ebook (cache_t *cache, const char *file, ebook_hash_t *h)
 
   media_id = cache_get_media_id (cache, file);
   g_return_val_if_fail (media_id != -1, FALSE);
+  if (cache_drop_if_stale (cache, media_id, file))
+    return FALSE;
 
   result->got = 0;
   result->hash = h;

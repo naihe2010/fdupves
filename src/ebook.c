@@ -58,6 +58,8 @@ find_extra_impl (const char *file)
     {
       for (i = 0; i < sizeof ebook_impls / sizeof ebook_impls[0]; ++i)
         {
+          if (ebook_impls[i].func == NULL)
+            continue;
           if (g_ascii_strcasecmp (p + 1, ebook_impls[i].type_prefix) == 0)
             return ebook_impls + i;
         }
@@ -72,7 +74,7 @@ ebook_file_hash (const char *file, ebook_hash_t *ehash)
   struct ebook_impl const *impl;
   int ret;
 
-  if (cache_get_ebook (g_cache, file, ehash))
+  if (g_cache && cache_get_ebook (g_cache, file, ehash))
     return 0;
 
   impl = find_extra_impl (file);
@@ -84,7 +86,7 @@ ebook_file_hash (const char *file, ebook_hash_t *ehash)
     {
       ret = ebook_hash (file, ehash);
     }
-  if (ret == 0)
+  if (ret == 0 && g_cache)
     {
       cache_set_ebook (g_cache, file, ehash);
     }
@@ -103,7 +105,7 @@ ebook_hash_cmp (ebook_hash_t *ha, ebook_hash_t *hb)
   do                                                                          \
     {                                                                         \
       if (*ha->key != '\0' && *hb->key != '\0'                                \
-          && strcmp (ha->key, ha->key) == 0)                                  \
+          && strcmp (ha->key, hb->key) == 0)                                  \
         return 0;                                                             \
     }                                                                         \
   while (0)

@@ -126,7 +126,7 @@ video_time_screenshot (const char *file, int time, int width, int height,
   AVFrame *frame, *frame_rgb;
   AVPacket *packet;
   struct SwsContext *img_convert_ctx = NULL;
-  int s, ret, bytes;
+  int s, ret, bytes, decoded;
   int64_t seek_target;
 
   if (avformat_open_input (&format_ctx, file, NULL, NULL) != 0)
@@ -181,6 +181,14 @@ video_time_screenshot (const char *file, int time, int width, int height,
   codec_ctx->pkt_timebase = format_ctx->streams[s]->time_base;
   // av_codec_set_pkt_timebase (codec_ctx, format_ctx->streams[s]->time_base);
 
+  if (avcodec_open2 (codec_ctx, codec, NULL) < 0)
+    {
+      g_warning (_ ("Open codec error: %s"), file);
+      avcodec_free_context (&codec_ctx);
+      avformat_close_input (&format_ctx);
+      return -1;
+    }
+
   frame = av_frame_alloc ();
   if (frame == NULL)
     {
@@ -223,6 +231,7 @@ video_time_screenshot (const char *file, int time, int width, int height,
       return -1;
     }
 
+  decoded = 0;
   while (av_read_frame (format_ctx, packet) >= 0)
     {
       if (packet->stream_index != s)
@@ -267,7 +276,13 @@ video_time_screenshot (const char *file, int time, int width, int height,
                  frame->linesize, 0, codec_ctx->height, frame_rgb->data,
                  frame_rgb->linesize);
       sws_freeContext (img_convert_ctx);
+      decoded = 1;
       break;
+    }
+
+  if (!decoded)
+    {
+      bytes = -1;
     }
 
   av_packet_free (&packet);

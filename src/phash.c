@@ -128,8 +128,12 @@ video_time_phash (const char *file, float offset)
         }
     }
 
-  video_time_screenshot (file, offset, FDUPVES_PHASH_LEN, FDUPVES_PHASH_LEN,
-                         buffer, sizeof buffer);
+  if (video_time_screenshot (file, offset, FDUPVES_PHASH_LEN,
+                             FDUPVES_PHASH_LEN, buffer, sizeof buffer)
+      < 0)
+    {
+      return 0;
+    }
 #ifdef _DEBUG
   basename = g_path_get_basename (file);
   g_snprintf (outfile, sizeof outfile, "%s/%s-%f.png", g_get_tmp_dir (),

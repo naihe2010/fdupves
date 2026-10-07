@@ -100,7 +100,7 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 
   step->doing = _ ("Compare image hash value");
   step->now = 0;
-  for (i = 0; i < ptr->len - 1; ++i)
+  for (i = 0; i + 1 < ptr->len; ++i)
     {
       for (j = i + 1; j < ptr->len; ++j)
         {
@@ -184,7 +184,7 @@ find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
       if (gui->quit)
         return 0;
 
-      for (i = 0; i < find->ptr[g]->len - 1; ++i)
+      for (i = 0; i + 1 < find->ptr[g]->len; ++i)
         {
           for (j = i + 1; j < find->ptr[g]->len; ++j)
             {
@@ -238,6 +238,10 @@ distance_to_same_peak_count (gulong num1, gulong num2, int distance)
   int rate[] = { 100, 90, 80, 50, 20, 10, 5, 2, 1, 0 };
 
   minnum = num1 < num2 ? (int)num1 : (int)num2;
+  if (distance >= (int)G_N_ELEMENTS (rate))
+    distance = G_N_ELEMENTS (rate) - 1;
+  if (distance < 0)
+    distance = 0;
   count = minnum * rate[distance] / 100;
 
   if (count == 0)
@@ -285,7 +289,7 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
     return 0;
 
   step->doing = _ ("Compare audio hash value");
-  for (i = 0; i < find->ptr[0]->len - 1; ++i)
+  for (i = 0; i + 1 < find->ptr[0]->len; ++i)
     {
       afile = g_ptr_array_index (find->ptr[0], i);
 
@@ -381,7 +385,7 @@ find_ebooks (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 
   step->doing = _ ("Compare ebook hash value");
   step->now = 0;
-  for (i = 0; i < ptr->len - 1; ++i)
+  for (i = 0; i + 1 < ptr->len; ++i)
     {
       for (j = i + 1; j < ptr->len; ++j)
         {
