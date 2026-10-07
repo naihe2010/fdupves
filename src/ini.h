@@ -72,8 +72,6 @@ typedef struct
 
   gint thumb_size[2];
 
-  gint video_timers[0x10][3];
-
   gchar **directories;
   gsize directory_count;
 

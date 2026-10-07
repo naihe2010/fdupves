@@ -88,20 +88,6 @@ ini_new ()
   ini->thumb_size[0] = 512;
   ini->thumb_size[1] = 384;
 
-  ini->video_timers[0][0] = 10;
-  ini->video_timers[0][1] = 120;
-  ini->video_timers[0][2] = 4;
-  ini->video_timers[1][0] = 60;
-  ini->video_timers[1][1] = 600;
-  ini->video_timers[1][2] = 25;
-  ini->video_timers[2][0] = 300;
-  ini->video_timers[2][1] = 3000;
-  ini->video_timers[2][2] = 120;
-  ini->video_timers[3][0] = 1500;
-  ini->video_timers[3][1] = 28800;
-  ini->video_timers[3][2] = 600;
-  ini->video_timers[4][0] = 0;
-
   ini->directories = NULL;
 
   ini->cache_file

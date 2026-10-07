@@ -40,19 +40,13 @@
 #define FD_COMP_CNT 2
 #endif
 
-struct st_hash
-{
-  int seek;
-  hash_t hash;
-};
+#define FDUPVES_VIDEO_SAMPLES 8
 
 struct st_file
 {
   const char *path;
   float length;
-  float offset;
-  struct st_hash head[1];
-  struct st_hash tail[1];
+  hash_t hashes[FDUPVES_VIDEO_SAMPLES];
   hash_array_t *hashArray;
 };
 
@@ -163,28 +157,52 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   return count;
 }
 
+static gboolean
+length_ratio_ok (float a, float b)
+{
+  float blen, llen;
+  static int rates[] = { 0, 1, 2, 10, 20, 100 };
+
+  if (g_ini->filter_time_rate == 0)
+    {
+      return TRUE;
+    }
+
+  blen = a;
+  llen = b;
+  if (blen < llen)
+    {
+      llen = a;
+      blen = b;
+    }
+
+  return llen * (float)(rates[g_ini->filter_time_rate] + 1) >= blen;
+}
+
 int
 find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 {
-  gsize i, j, g, group_cnt;
-  int dist, count;
+  gsize i, j;
+  int k, same, count;
   struct st_find find[1];
   struct st_file *afile, *bfile;
   find_step step[1];
   gui_t *gui = (gui_t *)arg;
 
   count = 0;
-
-  for (i = 0; g_ini->video_timers[i][0]; ++i)
-    {
-      find->ptr[i] = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
-    }
-  group_cnt = i;
-
+  find->ptr[0] = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
   step->found = FALSE;
   step->total = ptr->len;
   step->now = 0;
   step->doing = _ ("Generate video screenshot hash value");
+
+  find->thread_pool = g_thread_pool_new ((GFunc)video_hash_func, NULL,
+                                         g_ini->threads_count, FALSE, NULL);
+  if (find->thread_pool == NULL)
+    {
+      g_ptr_array_free (find->ptr[0], TRUE);
+      return 0;
+    }
 
   find->step = step;
   find->type = FD_VIDEO;
@@ -192,74 +210,56 @@ find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   find->arg = arg;
   g_ptr_array_foreach (ptr, (GFunc)find_video_prepare, find);
 
-  step->doing = _ ("Compare video screenshot hash value");
-  for (g = 0; g < group_cnt; ++g)
+  g_thread_pool_free (find->thread_pool, FALSE, TRUE);
+
+  if (gui->quit)
     {
-      if (find->ptr[g]->len <= 0)
+      g_ptr_array_free (find->ptr[0], TRUE);
+      return 0;
+    }
+
+  step->doing = _ ("Compare video screenshot hash value");
+  for (i = 0; i + 1 < find->ptr[0]->len; ++i)
+    {
+      afile = g_ptr_array_index (find->ptr[0], i);
+
+      for (j = i + 1; j < find->ptr[0]->len; ++j)
         {
-          g_ptr_array_free (find->ptr[g], TRUE);
-          continue;
-        }
+          bfile = g_ptr_array_index (find->ptr[0], j);
 
-      find->thread_pool = g_thread_pool_new (
-          (GFunc)video_hash_func, find, g_ini->threads_count, FALSE, NULL);
-      if (find->thread_pool == NULL)
-        {
-          g_ptr_array_free (find->ptr[g], TRUE);
-          continue;
-        }
-
-      for (i = 0; i < find->ptr[g]->len; ++i)
-        {
-          afile = g_ptr_array_index (find->ptr[g], i);
-          afile->offset = g_ini->video_timers[g][2];
-          g_thread_pool_push (find->thread_pool, afile, NULL);
-        }
-
-      g_thread_pool_free (find->thread_pool, FALSE, TRUE);
-
-      if (gui->quit)
-        return 0;
-
-      for (i = 0; i + 1 < find->ptr[g]->len; ++i)
-        {
-          for (j = i + 1; j < find->ptr[g]->len; ++j)
+          if (!length_ratio_ok (afile->length, bfile->length))
             {
-              afile = g_ptr_array_index (find->ptr[g], i);
-              bfile = g_ptr_array_index (find->ptr[g], j);
+              continue;
+            }
 
-              dist = hash_cmp (afile->head->hash, bfile->head->hash);
-              if (dist < g_ini->same_video_distance)
+          same = 0;
+          for (k = 0; k < FDUPVES_VIDEO_SAMPLES; ++k)
+            {
+              if (hash_cmp (afile->hashes[k], bfile->hashes[k])
+                  < g_ini->same_video_distance)
                 {
-                  step->found = TRUE;
-                  step->afile = afile->path;
-                  step->bfile = bfile->path;
-                  step->type = FD_SAME_VIDEO_HEAD;
-                  cb (step, arg);
-                  ++count;
-                  continue;
-                }
-
-              dist = hash_cmp (afile->tail->hash, bfile->tail->hash);
-              if (dist < g_ini->same_video_distance)
-                {
-                  step->found = TRUE;
-                  step->afile = afile->path;
-                  step->bfile = bfile->path;
-                  step->type = FD_SAME_VIDEO_TAIL;
-                  cb (step, arg);
-                  ++count;
+                  ++same;
                 }
             }
 
-          step->found = FALSE;
-          step->total = find->ptr[g]->len;
-          step->now = i;
-          cb (step, arg);
+          if (same * 2 > FDUPVES_VIDEO_SAMPLES)
+            {
+              step->found = TRUE;
+              step->afile = afile->path;
+              step->bfile = bfile->path;
+              step->type = FD_SAME_VIDEO_HEAD;
+              cb (step, arg);
+              ++count;
+            }
         }
 
-      g_ptr_array_free (find->ptr[g], TRUE);
+      step->found = FALSE;
+      step->total = find->ptr[0]->len;
+      step->now = i;
+      cb (step, arg);
     }
+
+  g_ptr_array_free (find->ptr[0], TRUE);
 
   return count;
 }
@@ -292,12 +292,10 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 {
   gsize i, j, dist;
   int count, peak_count;
-  float blen, llen;
   struct st_find find[1];
   struct st_file *afile, *bfile;
   find_step step[1];
   gui_t *gui = (gui_t *)arg;
-  static int rates[] = { 0, 1, 2, 10, 20, 100 };
 
   count = 0;
   find->ptr[0] = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
@@ -344,22 +342,11 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
               continue;
             }
 
-          if (g_ini->filter_time_rate != 0)
+          if (!length_ratio_ok (afile->length, bfile->length))
             {
-              blen = afile->length;
-              llen = bfile->length;
-              if (blen < llen)
-                {
-                  llen = afile->length;
-                  blen = bfile->length;
-                }
-              if (llen * (float)(rates[g_ini->filter_time_rate] + 1) < blen)
-                {
-                  g_debug ("%s length %f and %s lenght %f, filtered",
-                           afile->path, afile->length, bfile->path,
-                           bfile->length);
-                  continue;
-                }
+              g_debug ("%s length %f and %s lenght %f, filtered", afile->path,
+                       afile->length, bfile->path, bfile->length);
+              continue;
             }
 
           dist = audio_fingerprint_similarity (afile->hashArray,
@@ -459,7 +446,7 @@ st_file_free (struct st_file *file)
 static void
 find_video_prepare (const gchar *file, struct st_find *find)
 {
-  int i, length;
+  int length;
   struct st_file *stv;
 
   length = video_get_length (file);
@@ -469,21 +456,14 @@ find_video_prepare (const gchar *file, struct st_find *find)
       return;
     }
 
-  for (i = 0; g_ini->video_timers[i][0]; ++i)
-    {
-      if (length < g_ini->video_timers[i][0]
-          || length > g_ini->video_timers[i][1])
-        {
-          continue;
-        }
+  stv = g_malloc0 (sizeof (struct st_file));
 
-      stv = g_malloc0 (sizeof (struct st_file));
+  stv->path = file;
+  stv->length = length;
 
-      stv->path = file;
-      stv->length = length;
+  g_thread_pool_push (find->thread_pool, stv, NULL);
 
-      g_ptr_array_add (find->ptr[i], stv);
-    }
+  g_ptr_array_add (find->ptr[0], stv);
 
   ++find->step->now;
   find->cb (find->step, find->arg);
@@ -519,8 +499,13 @@ find_audio_prepare (const gchar *file, struct st_find *find)
 static int
 video_hash_func (struct st_file *file)
 {
-  file->head->hash = video_time_hash (file->path, file->offset);
-  file->tail->hash = video_time_hash (file->path, file->length - file->offset);
+  int k;
+
+  for (k = 0; k < FDUPVES_VIDEO_SAMPLES; ++k)
+    {
+      file->hashes[k] = video_time_phash (
+          file->path, file->length * (k + 0.5f) / FDUPVES_VIDEO_SAMPLES);
+    }
   return 0;
 }
 

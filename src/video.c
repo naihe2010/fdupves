@@ -31,10 +31,15 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/display.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 
 #include <glib.h>
+#include <math.h>
+#include <string.h>
+
+#define FDUPVES_VIDEO_BLACK 24
 
 video_info *
 video_get_info (const char *file)
@@ -116,17 +121,157 @@ video_get_length (const char *file)
   return length;
 }
 
+static int
+video_stream_rotation (const AVStream *stream)
+{
+  const int32_t *matrix;
+  double angle;
+  int rotation;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 29, 100)
+  const AVPacketSideData *sd;
+
+  sd = av_packet_side_data_get (stream->codecpar->coded_side_data,
+                                stream->codecpar->nb_coded_side_data,
+                                AV_PKT_DATA_DISPLAYMATRIX);
+  matrix = sd ? (const int32_t *)sd->data : NULL;
+#else
+  matrix = (const int32_t *)av_stream_get_side_data (
+      stream, AV_PKT_DATA_DISPLAYMATRIX, NULL);
+#endif
+  if (matrix == NULL)
+    {
+      return 0;
+    }
+
+  angle = -av_display_rotation_get (matrix);
+  if (isnan (angle))
+    {
+      return 0;
+    }
+
+  rotation = (int)lround (angle / 90) * 90 % 360;
+  return rotation < 0 ? rotation + 360 : rotation;
+}
+
+static void
+video_probe_rotate (const uint8_t *src, uint8_t *dst, int n, int rotation)
+{
+  int x, y, sx, sy;
+
+  for (y = 0; y < n; ++y)
+    {
+      for (x = 0; x < n; ++x)
+        {
+          if (rotation == 90)
+            {
+              sx = y;
+              sy = n - 1 - x;
+            }
+          else if (rotation == 180)
+            {
+              sx = n - 1 - x;
+              sy = n - 1 - y;
+            }
+          else
+            {
+              sx = n - 1 - y;
+              sy = x;
+            }
+          memcpy (dst + (y * n + x) * 3, src + (sy * n + sx) * 3, 3);
+        }
+    }
+}
+
+static int
+video_frame_render (const AVFrame *frame, int rotation, int width, int height,
+                    uint8_t *const dst[], const int dst_linesize[])
+{
+  uint8_t *probe, *rotated, *img, *src[1];
+  int *rows, *cols;
+  int n, x, y, gray, top, bottom, left, right, ret, linesize[1];
+  struct SwsContext *ctx;
+  const uint8_t *p;
+
+  n = MAX (FDUPVES_VIDEO_PROBE_LEN, MAX (width, height));
+  linesize[0] = n * 3;
+
+  ctx = sws_getContext (frame->width, frame->height, frame->format, n, n,
+                        AV_PIX_FMT_RGB24, SWS_FAST_BILINEAR, NULL, NULL, NULL);
+  if (ctx == NULL)
+    {
+      return -1;
+    }
+  probe = g_malloc (n * n * 3);
+  rotated = g_malloc (n * n * 3);
+  rows = g_new0 (int, n);
+  cols = g_new0 (int, n);
+  src[0] = probe;
+  sws_scale (ctx, (const uint8_t *const *)frame->data, frame->linesize, 0,
+             frame->height, src, linesize);
+  sws_freeContext (ctx);
+
+  img = probe;
+  if (rotation != 0)
+    {
+      video_probe_rotate (probe, rotated, n, rotation);
+      img = rotated;
+    }
+
+  for (y = 0; y < n; ++y)
+    {
+      for (x = 0; x < n; ++x)
+        {
+          p = img + (y * n + x) * 3;
+          gray = (p[0] * 299 + p[1] * 587 + p[2] * 114) / 1000;
+          rows[y] += gray;
+          cols[x] += gray;
+        }
+    }
+
+  top = 0;
+  bottom = n;
+  while (bottom - top > n / 2 && rows[top] < FDUPVES_VIDEO_BLACK * n)
+    ++top;
+  while (bottom - top > n / 2 && rows[bottom - 1] < FDUPVES_VIDEO_BLACK * n)
+    --bottom;
+  left = 0;
+  right = n;
+  while (right - left > n / 2 && cols[left] < FDUPVES_VIDEO_BLACK * n)
+    ++left;
+  while (right - left > n / 2 && cols[right - 1] < FDUPVES_VIDEO_BLACK * n)
+    --right;
+
+  ret = -1;
+  ctx = sws_getContext (right - left, bottom - top, AV_PIX_FMT_RGB24, width,
+                        height, AV_PIX_FMT_RGB24, SWS_AREA, NULL, NULL, NULL);
+  if (ctx != NULL)
+    {
+      src[0] = img + (top * n + left) * 3;
+      sws_scale (ctx, (const uint8_t *const *)src, linesize, 0, bottom - top,
+                 dst, dst_linesize);
+      sws_freeContext (ctx);
+      ret = 0;
+    }
+
+  g_free (cols);
+  g_free (rows);
+  g_free (rotated);
+  g_free (probe);
+
+  return ret;
+}
+
 int
-video_time_screenshot (const char *file, int time, int width, int height,
+video_time_screenshot (const char *file, double time, int width, int height,
                        char *buffer, int buf_len)
 {
   AVFormatContext *format_ctx = NULL;
   AVCodecContext *codec_ctx = NULL;
   const AVCodec *codec = NULL;
-  AVFrame *frame, *frame_rgb;
+  AVStream *stream;
+  AVFrame *frame, *next, *frame_rgb;
   AVPacket *packet;
-  struct SwsContext *img_convert_ctx = NULL;
-  int s, ret, bytes, decoded;
+  int s, ret, bytes, decoded, reached;
   int64_t seek_target;
 
   if (avformat_open_input (&format_ctx, file, NULL, NULL) != 0)
@@ -150,8 +295,9 @@ video_time_screenshot (const char *file, int time, int width, int height,
       avformat_close_input (&format_ctx);
       return -1;
     }
+  stream = format_ctx->streams[s];
 
-  codec = avcodec_find_decoder (format_ctx->streams[s]->codecpar->codec_id);
+  codec = avcodec_find_decoder (stream->codecpar->codec_id);
   if (codec == NULL)
     {
       g_warning (_ ("Unsupported codec: %s"), file);
@@ -168,8 +314,7 @@ video_time_screenshot (const char *file, int time, int width, int height,
       return -1;
     }
 
-  ret = avcodec_parameters_to_context (codec_ctx,
-                                       format_ctx->streams[s]->codecpar);
+  ret = avcodec_parameters_to_context (codec_ctx, stream->codecpar);
   if (ret < 0)
     {
       g_warning (_ ("Memory error: %s"), file);
@@ -178,7 +323,7 @@ video_time_screenshot (const char *file, int time, int width, int height,
       return -1;
     }
 
-  codec_ctx->pkt_timebase = format_ctx->streams[s]->time_base;
+  codec_ctx->pkt_timebase = stream->time_base;
   // av_codec_set_pkt_timebase (codec_ctx, format_ctx->streams[s]->time_base);
 
   if (avcodec_open2 (codec_ctx, codec, NULL) < 0)
@@ -190,15 +335,14 @@ video_time_screenshot (const char *file, int time, int width, int height,
     }
 
   frame = av_frame_alloc ();
-  if (frame == NULL)
-    {
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
-      return -1;
-    }
+  next = av_frame_alloc ();
   frame_rgb = av_frame_alloc ();
-  if (frame_rgb == NULL)
+  packet = av_packet_alloc ();
+  if (frame == NULL || next == NULL || frame_rgb == NULL || packet == NULL)
     {
+      av_packet_free (&packet);
+      av_frame_free (&frame_rgb);
+      av_frame_free (&next);
       av_frame_free (&frame);
       avcodec_free_context (&codec_ctx);
       avformat_close_input (&format_ctx);
@@ -209,84 +353,63 @@ video_time_screenshot (const char *file, int time, int width, int height,
                                 height, 1);
   if (buf_len < bytes)
     {
-      av_frame_free (&frame);
-      av_frame_free (&frame_rgb);
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
-      return -1;
+      bytes = -1;
     }
 
-  seek_target = av_rescale (time, format_ctx->streams[s]->time_base.den,
-                            format_ctx->streams[s]->time_base.num);
-  avformat_seek_file (format_ctx, s, 0, seek_target, seek_target,
-                      AVSEEK_FLAG_FRAME);
-
-  packet = av_packet_alloc ();
-  if (packet == NULL)
+  seek_target = (int64_t)llround (time * stream->time_base.den
+                                  / stream->time_base.num);
+  if (stream->start_time != AV_NOPTS_VALUE)
     {
-      av_frame_free (&frame);
-      av_frame_free (&frame_rgb);
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
-      return -1;
+      seek_target += stream->start_time;
     }
+  av_seek_frame (format_ctx, s, seek_target, AVSEEK_FLAG_BACKWARD);
 
   decoded = 0;
-  while (av_read_frame (format_ctx, packet) >= 0)
+  reached = 0;
+  while (bytes >= 0 && !reached)
     {
-      if (packet->stream_index != s)
+      ret = av_read_frame (format_ctx, packet);
+      if (ret < 0)
+        {
+          avcodec_send_packet (codec_ctx, NULL);
+        }
+      else if (packet->stream_index != s)
         {
           av_packet_unref (packet);
           continue;
         }
-
-      if (avcodec_send_packet (codec_ctx, packet) != 0)
+      else
         {
+          avcodec_send_packet (codec_ctx, packet);
           av_packet_unref (packet);
-          continue;
         }
 
-      av_packet_unref (packet);
-
-      ret = avcodec_receive_frame (codec_ctx, frame);
-      if (ret == AVERROR (EAGAIN))
+      while (!reached && avcodec_receive_frame (codec_ctx, next) == 0)
         {
-          continue;
+          av_frame_unref (frame);
+          av_frame_move_ref (frame, next);
+          decoded = 1;
+          reached = frame->best_effort_timestamp == AV_NOPTS_VALUE
+                    || frame->best_effort_timestamp >= seek_target;
         }
 
-      if (ret != 0)
+      if (ret < 0)
         {
-          g_warning (_ ("Cannot receive frame from context"));
-          bytes = -1;
           break;
         }
-
-      img_convert_ctx = sws_getCachedContext (
-          img_convert_ctx, codec_ctx->width, codec_ctx->height,
-          codec_ctx->pix_fmt, width, height, AV_PIX_FMT_RGB24,
-          SWS_FAST_BILINEAR, NULL, NULL, NULL);
-      if (!img_convert_ctx)
-        {
-          g_warning (_ ("Cannot initialize sws conversion context"));
-          bytes = -1;
-          break;
-        }
-
-      sws_scale (img_convert_ctx, (const uint8_t *const *)frame->data,
-                 frame->linesize, 0, codec_ctx->height, frame_rgb->data,
-                 frame_rgb->linesize);
-      sws_freeContext (img_convert_ctx);
-      decoded = 1;
-      break;
     }
 
-  if (!decoded)
+  if (!decoded
+      || video_frame_render (frame, video_stream_rotation (stream), width,
+                             height, frame_rgb->data, frame_rgb->linesize)
+             < 0)
     {
       bytes = -1;
     }
 
   av_packet_free (&packet);
   av_frame_free (&frame_rgb);
+  av_frame_free (&next);
   av_frame_free (&frame);
 
   avcodec_free_context (&codec_ctx);
@@ -297,8 +420,8 @@ video_time_screenshot (const char *file, int time, int width, int height,
 }
 
 int
-video_time_screenshot_file (const char *file, int time, int width, int height,
-                            const char *out_file)
+video_time_screenshot_file (const char *file, double time, int width,
+                            int height, const char *out_file)
 {
   char *buf;
   int len;
