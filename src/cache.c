@@ -45,7 +45,7 @@ cache_t *g_cache;
 #define strtouq _strtoui64
 #endif
 
-#define CACHE_VERSION 1
+#define CACHE_VERSION 2
 
 struct cache_s
 {
@@ -58,17 +58,19 @@ static gboolean cache_exec (cache_t *cache, int (*cb) (sqlite3_stmt *, void *),
 static void cache_remove_by_id (cache_t *cache, int media_id);
 static int get_id_callback (sqlite3_stmt *stmt, void *para);
 
+#define EBOOK_CREATE_TEXT                                                     \
+  "create table ebook(id INTEGER PRIMARY KEY AUTOINCREMENT, media_id "        \
+  "integer, hash varchar(32), title "                                         \
+  "varchar(1024), author varchar(256), "                                      \
+  "producer varchar(256), pubdate_year integer, pubdate_mon integer, "        \
+  "pubdate_day integer, isbn varchar(128), text_hash varchar(32));"
+
 const char *init_text
     = "create table media(id INTEGER PRIMARY KEY AUTOINCREMENT, path text, "
       "size bigint, mtime bigint);"
       "create table hash(id INTEGER PRIMARY KEY AUTOINCREMENT, media_id "
       "integer, alg int, offset real, hash varchar(32));"
-      "create unique index index_path on media (path);"
-      "create table ebook(id INTEGER PRIMARY KEY AUTOINCREMENT, media_id "
-      "integer, hash varchar(32), title "
-      "varchar(1024), author varchar(256), "
-      "producer varchar(256), pubdate_year integer, pubdate_mon integer, "
-      "pubdate_day integer, isbn varchar(128));";
+      "create unique index index_path on media (path);" EBOOK_CREATE_TEXT;
 
 static void
 cache_init (cache_t *cache)
@@ -122,7 +124,13 @@ cache_open (const gchar *file)
   cache_exec (cache, get_id_callback, &version, "pragma user_version;", "");
   if (version < CACHE_VERSION)
     {
-      cache_exec (cache, NULL, NULL, "delete from hash;", "");
+      if (version < 1)
+        cache_exec (cache, NULL, NULL, "delete from hash;", "");
+      if (version < 2)
+        {
+          cache_exec (cache, NULL, NULL, "drop table if exists ebook;", "");
+          cache_exec (cache, NULL, NULL, EBOOK_CREATE_TEXT, "");
+        }
       cache_exec (cache, NULL, NULL,
                   "pragma user_version = " G_STRINGIFY (CACHE_VERSION) ";",
                   "");
@@ -424,12 +432,12 @@ cache_set_ebook (cache_t *cache, const char *file, ebook_hash_t *h)
   return cache_exec (
       cache, NULL, NULL,
       "insert into ebook(media_id, hash, title, author, producer, "
-      "pubdate_year, pubdate_mon, pubdate_day, isbn) values(?, ?, ?, ?, ?, "
-      "?, "
-      "?, ?, ?);",
-      "%d, %l, %s, %s, %s, %d, %d, %d, %s", media_id, h->cover_hash, h->title,
-      h->author, h->producer, h->public_date.year, h->public_date.month,
-      h->public_date.day, h->isbn);
+      "pubdate_year, pubdate_mon, pubdate_day, isbn, text_hash) values(?, ?, "
+      "?, ?, ?, ?, "
+      "?, ?, ?, ?);",
+      "%d, %l, %s, %s, %s, %d, %d, %d, %s, %l", media_id, h->cover_hash,
+      h->title, h->author, h->producer, h->public_date.year,
+      h->public_date.month, h->public_date.day, h->isbn, h->text_hash);
 }
 
 struct ebook_result
@@ -458,6 +466,7 @@ get_ebook_callback (sqlite3_stmt *stmt, void *para)
   h->public_date.day = sqlite3_column_int (stmt, 8);
   str = sqlite3_column_text (stmt, 9);
   snprintf (h->isbn, sizeof (h->isbn), "%s", str);
+  h->text_hash = sqlite3_column_int64 (stmt, 10);
 
   return 0;
 }

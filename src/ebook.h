@@ -35,6 +35,7 @@
 typedef struct
 {
   hash_t cover_hash;
+  hash_t text_hash;
   char title[FDUPVES_TITLE_LEN];
   char author[FDUPVES_AUTHOR_LEN];
   char producer[FDUPVES_AUTHOR_LEN];
@@ -52,5 +53,7 @@ typedef struct
 int ebook_file_hash (const char *file, ebook_hash_t *ehash);
 
 int ebook_hash_cmp (ebook_hash_t *ha, ebook_hash_t *hb);
+
+hash_t text_simhash (const char *text, gsize len);
 
 #endif

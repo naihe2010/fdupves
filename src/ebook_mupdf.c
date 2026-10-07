@@ -51,13 +51,54 @@ pdf_get_cover_hash (fz_context *ctx, fz_document *doc, ebook_hash_t *ehash)
       return;
     }
 
-  hashbuf = gdk_pixbuf_scale_simple (pixbuf, 8, 8, GDK_INTERP_BILINEAR);
+  hashbuf = gdk_pixbuf_scale_simple (pixbuf, FDUPVES_PHASH_LEN,
+                                     FDUPVES_PHASH_LEN, GDK_INTERP_BILINEAR);
   g_object_unref (pixbuf);
 
-  ehash->cover_hash = image_buffer_hash (gdk_pixbuf_get_pixels (hashbuf),
-                                         gdk_pixbuf_get_byte_length (hashbuf));
+  ehash->cover_hash = pixbuf_phash (hashbuf);
   g_object_unref (hashbuf);
   fz_drop_pixmap (ctx, pixmap);
+}
+
+static void
+pdf_get_text_hash (fz_context *ctx, fz_document *doc, ebook_hash_t *ehash)
+{
+  fz_stext_options opts = { 0 };
+  fz_buffer *text = NULL;
+  fz_buffer *page = NULL;
+  unsigned char *data;
+  size_t len;
+  int i, n;
+
+  fz_var (text);
+  fz_var (page);
+
+  fz_try (ctx)
+  {
+    text = fz_new_buffer (ctx, 4096);
+    n = MIN (fz_count_pages (ctx, doc), 8);
+    for (i = 0; i < n && fz_buffer_storage (ctx, text, &data) < 65536; ++i)
+      {
+        page = fz_new_buffer_from_page_number (ctx, doc, i, &opts);
+        fz_append_buffer (ctx, text, page);
+        fz_drop_buffer (ctx, page);
+        page = NULL;
+      }
+  }
+  fz_always (ctx)
+  {
+    fz_drop_buffer (ctx, page);
+    if (text)
+      {
+        len = MIN (fz_buffer_storage (ctx, text, &data), 65536);
+        ehash->text_hash = text_simhash ((const char *)data, len);
+      }
+    fz_drop_buffer (ctx, text);
+  }
+  fz_catch (ctx)
+  {
+    fz_report_error (ctx);
+  }
 }
 
 static void
@@ -83,6 +124,7 @@ ebook_hash (const char *file, ebook_hash_t *ehash)
     fz_register_document_handlers (ctx);
     doc = fz_open_document (ctx, file);
     pdf_get_cover_hash (ctx, doc, ehash);
+    pdf_get_text_hash (ctx, doc, ehash);
     pdf_get_isbn (ctx, doc, ehash);
     fz_lookup_metadata (ctx, doc, FZ_META_INFO_TITLE, ehash->title,
                         sizeof ehash->title);
