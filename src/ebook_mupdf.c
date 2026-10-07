@@ -55,7 +55,7 @@ pdf_get_cover_hash (fz_context *ctx, fz_document *doc, ebook_hash_t *ehash)
   g_object_unref (pixbuf);
 
   ehash->cover_hash = image_buffer_hash (gdk_pixbuf_get_pixels (hashbuf),
-                                         pixmap->w * pixmap->h * pixmap->n);
+                                         gdk_pixbuf_get_byte_length (hashbuf));
   g_object_unref (hashbuf);
   fz_drop_pixmap (ctx, pixmap);
 }
@@ -70,49 +70,38 @@ int
 ebook_hash (const char *file, ebook_hash_t *ehash)
 {
   fz_context *ctx;
-  fz_document *doc;
+  fz_document *doc = NULL;
+  int ret = 0;
 
   ctx = fz_new_context (NULL, NULL, FZ_STORE_UNLIMITED);
   g_return_val_if_fail (ctx != NULL, -1);
 
-  fz_register_document_handlers (ctx);
+  fz_var (doc);
 
   fz_try (ctx)
   {
+    fz_register_document_handlers (ctx);
     doc = fz_open_document (ctx, file);
-    if (doc == NULL)
-      {
-        g_warning ("open pdf file error: %s", ctx->error.message);
-        fz_drop_context (ctx);
-        return -1;
-      }
-
     pdf_get_cover_hash (ctx, doc, ehash);
     pdf_get_isbn (ctx, doc, ehash);
+    fz_lookup_metadata (ctx, doc, FZ_META_INFO_TITLE, ehash->title,
+                        sizeof ehash->title);
+    fz_lookup_metadata (ctx, doc, FZ_META_INFO_AUTHOR, ehash->author,
+                        sizeof ehash->author);
+    fz_lookup_metadata (ctx, doc, FZ_META_INFO_PRODUCER, ehash->producer,
+                        sizeof ehash->producer);
+  }
+  fz_always (ctx)
+  {
+    fz_drop_document (ctx, doc);
   }
   fz_catch (ctx)
   {
-    g_warning ("mupdf occured error: %s", ctx->error.message);
-    fz_drop_context (ctx);
-    return -1;
+    g_warning ("mupdf error on %s: %s", file, fz_caught_message (ctx));
+    ret = -1;
   }
 
-#define _pdf_get_value_to_ehash(key, area)                                    \
-  do                                                                          \
-    {                                                                         \
-      fz_lookup_metadata (ctx, doc, key, ehash->area, sizeof ehash->area);    \
-    }                                                                         \
-  while (0)
-
-  _pdf_get_value_to_ehash (FZ_META_INFO_TITLE, title);
-  _pdf_get_value_to_ehash (FZ_META_INFO_AUTHOR, author);
-  _pdf_get_value_to_ehash (FZ_META_INFO_PRODUCER, producer);
-  printf ("%s title: %s\n", file, ehash->title);
-  printf ("%s author: %s\n", file, ehash->author);
-  printf ("%s producer: %s\n", file, ehash->producer);
-  printf ("%s isbn: %s\n", file, ehash->isbn);
-  fz_drop_document (ctx, doc);
   fz_drop_context (ctx);
 
-  return 0;
+  return ret;
 }
