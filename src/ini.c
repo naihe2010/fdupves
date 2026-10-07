@@ -80,7 +80,7 @@ ini_new ()
 
   ini->same_image_distance = 6;
   ini->same_video_distance = 8;
-  ini->same_audio_distance = 2;
+  ini->same_audio_distance = 6;
 
   ini->threads_count = 1;
   ini->ebook_viewer = g_strdup ("apvlv");

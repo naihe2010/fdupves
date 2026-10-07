@@ -45,7 +45,7 @@ cache_t *g_cache;
 #define strtouq _strtoui64
 #endif
 
-#define CACHE_VERSION 2
+#define CACHE_VERSION 3
 
 struct cache_s
 {
@@ -131,6 +131,11 @@ cache_open (const gchar *file)
           cache_exec (cache, NULL, NULL, "drop table if exists ebook;", "");
           cache_exec (cache, NULL, NULL, EBOOK_CREATE_TEXT, "");
         }
+      if (version < 3)
+        cache_exec (cache, NULL, NULL,
+                    "delete from hash where alg not in (?, ?, ?);", "%d %d %d",
+                    FDUPVES_IMAGE_HASH, FDUPVES_IMAGE_PHASH,
+                    FDUPVES_IMAGE_DHASH);
       cache_exec (cache, NULL, NULL,
                   "pragma user_version = " G_STRINGIFY (CACHE_VERSION) ";",
                   "");
@@ -413,7 +418,7 @@ cache_sets (cache_t *cache, const gchar *file, int alg,
       ret = cache_exec (cache, NULL, NULL,
                         "insert into hash(media_id, offset, alg, hash) "
                         "values(?, ?, ?, ?);",
-                        "%d, %d, %d, %l", media_id, hash->offset, alg,
+                        "%d, %d, %d, %s", media_id, hash->offset, alg,
                         hash->hash);
       g_return_val_if_fail (ret, FALSE);
     }

@@ -328,7 +328,7 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
     {
       afile = g_ptr_array_index (find->ptr[0], i);
 
-      if (hash_array_size (afile->hashArray) == 0)
+      if (afile->hashArray == NULL || hash_array_size (afile->hashArray) == 0)
         {
           continue;
         }
@@ -337,7 +337,8 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
         {
           bfile = g_ptr_array_index (find->ptr[0], j);
 
-          if (hash_array_size (bfile->hashArray) == 0)
+          if (bfile->hashArray == NULL
+              || hash_array_size (bfile->hashArray) == 0)
             {
               continue;
             }

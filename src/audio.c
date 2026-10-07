@@ -35,6 +35,8 @@
 
 #include <glib.h>
 
+#define FDUPVES_AUDIO_AMP_MIN 10
+
 audio_info *
 audio_get_info (const char *file)
 {
@@ -122,13 +124,16 @@ audio_extract (const char *file, float offset, float length, int ar,
   AVCodecContext *codec_ctx = NULL;
   AVStream *stream = NULL;
   const AVCodec *codec = NULL;
-  AVFrame *frame = NULL, *frame_s16 = NULL;
+  AVFrame *frame = NULL;
   AVPacket *packet = NULL;
   struct SwrContext *convert_ctx = NULL;
-  int s, ret, bytes = -1, want_samples, got_samples;
+  uint8_t *out;
+  int s, ret, bytes = -1, got_samples;
+  gboolean eof;
   int64_t seek_target;
   float total_length;
 
+  *pBuffer = NULL;
   if (avformat_open_input (&format_ctx, file, NULL, NULL) != 0)
     {
       g_warning (_ ("could not open: %s"), file);
@@ -179,8 +184,7 @@ audio_extract (const char *file, float offset, float length, int ar,
     }
 
   frame = av_frame_alloc ();
-  frame_s16 = av_frame_alloc ();
-  if (frame == NULL || frame_s16 == NULL)
+  if (frame == NULL)
     {
       g_warning (_ ("alloc frame error: %s"), file);
       goto end;
@@ -200,10 +204,13 @@ audio_extract (const char *file, float offset, float length, int ar,
       length = total_length - offset;
     }
 
-  seek_target
-      = av_rescale ((int)offset, stream->time_base.den, stream->time_base.num);
-  avformat_seek_file (format_ctx, s, 0, seek_target, seek_target,
-                      AVSEEK_FLAG_FRAME);
+  if (offset > 0)
+    {
+      seek_target = av_rescale ((int)offset, stream->time_base.den,
+                                stream->time_base.num);
+      avformat_seek_file (format_ctx, s, 0, seek_target, seek_target,
+                          AVSEEK_FLAG_FRAME);
+    }
 
   packet = av_packet_alloc ();
   if (packet == NULL)
@@ -259,7 +266,7 @@ audio_extract (const char *file, float offset, float length, int ar,
     }
 
   *pLen = ar * length;
-  *pBuffer = g_new (short, *pLen);
+  *pBuffer = g_new0 (short, *pLen);
   if (*pBuffer == NULL)
     {
       g_warning (_ ("Could not initialize resampler context\n"));
@@ -267,72 +274,57 @@ audio_extract (const char *file, float offset, float length, int ar,
     }
 
   got_samples = 0;
-  while (av_read_frame (format_ctx, packet) == 0)
+  eof = FALSE;
+  while (!eof && got_samples < *pLen)
     {
-      if (packet->stream_index != s)
+      ret = av_read_frame (format_ctx, packet);
+      if (ret == 0 && packet->stream_index != s)
         {
           av_packet_unref (packet);
           continue;
         }
 
-      if (avcodec_send_packet (codec_ctx, packet) != 0)
-        {
-          av_packet_unref (packet);
-          continue;
-        }
-
+      eof = ret < 0;
+      ret = avcodec_send_packet (codec_ctx, eof ? NULL : packet);
       av_packet_unref (packet);
-
-      ret = avcodec_receive_frame (codec_ctx, frame);
-      if (ret == AVERROR (EAGAIN))
+      if (ret < 0 && !eof)
         {
           continue;
         }
 
-      if (ret != 0)
+      while (got_samples < *pLen
+             && (ret = avcodec_receive_frame (codec_ctx, frame)) == 0)
+        {
+          out = (uint8_t *)(*pBuffer + got_samples);
+          ret = swr_convert (convert_ctx, &out, *pLen - got_samples,
+                             (const uint8_t **)frame->data, frame->nb_samples);
+          if (ret < 0)
+            {
+              g_warning (_ ("Could not resample samples.\n"));
+              goto end;
+            }
+          got_samples += ret;
+        }
+
+      if (ret < 0 && ret != AVERROR (EAGAIN) && ret != AVERROR_EOF)
         {
           g_warning (_ ("Cannot receive frame from context"));
-          bytes = -1;
           goto end;
-        }
-
-      want_samples
-          = av_rescale_rnd (swr_get_delay (convert_ctx, codec_ctx->sample_rate)
-                                + frame->nb_samples,
-                            ar, codec_ctx->sample_rate, AV_ROUND_UP);
-      if (got_samples + want_samples > *pLen)
-        {
-          want_samples = *pLen - got_samples;
-        }
-
-      bytes = av_samples_fill_arrays (frame_s16->data, frame_s16->linesize,
-                                      (uint8_t *)*pBuffer
-                                          + got_samples * sizeof (short),
-                                      1, want_samples, AV_SAMPLE_FMT_S16, 1);
-      if (bytes < 0)
-        {
-          g_warning (_ ("Could not fill resampler buffer\n"));
-          bytes = -1;
-          goto end;
-        }
-
-      if ((ret
-           = swr_convert (convert_ctx, frame_s16->data, want_samples,
-                          (const uint8_t **)frame->data, frame->nb_samples))
-          < 0)
-        {
-          g_warning (_ ("Could not resample samples.\n"));
-          bytes = -1;
-          goto end;
-        }
-
-      got_samples += ret;
-      if (got_samples == *pLen)
-        {
-          bytes = sizeof (short) * *pLen;
-          break;
         }
     }
+
+  if (got_samples < *pLen)
+    {
+      out = (uint8_t *)(*pBuffer + got_samples);
+      ret = swr_convert (convert_ctx, &out, *pLen - got_samples, NULL, 0);
+      if (ret > 0)
+        {
+          got_samples += ret;
+        }
+    }
+
+  *pLen = got_samples;
+  bytes = sizeof (short) * got_samples;
 
 end:
   if (convert_ctx)
@@ -342,10 +334,6 @@ end:
   if (packet)
     {
       av_packet_free (&packet);
-    }
-  if (frame_s16)
-    {
-      av_frame_free (&frame_s16);
     }
   if (frame)
     {
@@ -360,6 +348,12 @@ end:
   if (format_ctx)
     {
       avformat_close_input (&format_ctx);
+    }
+
+  if (bytes <= 0)
+    {
+      g_free (*pBuffer);
+      *pBuffer = NULL;
     }
 
   return bytes;
@@ -450,7 +444,7 @@ audio_hash_peak_append (const char *hash, int offset, void *ptr)
 hash_array_t *
 audio_fingerprint (const char *file)
 {
-  int samples, memlen, i, amp_min;
+  int samples, memlen, i;
   float medialen;
   short *buf;
   float *datas;
@@ -472,18 +466,11 @@ audio_fingerprint (const char *file)
   for (i = 0; i < samples; ++i)
     datas[i] = (float)(buf[i]);
 
-  for (array = NULL, amp_min = 50; amp_min >= 5; amp_min -= 5)
+  array = hash_array_new ();
+  if (array)
     {
-      if (array)
-        hash_array_free (array);
-      array = hash_array_new ();
-      if (array == NULL)
-        break;
-
-      fingerprint (datas, samples, 22050, amp_min, audio_hash_peak_append,
-                   array);
-      if (hash_array_size (array) > (((int)medialen) >> 2))
-        break;
+      fingerprint (datas, samples, 22050, FDUPVES_AUDIO_AMP_MIN,
+                   audio_hash_peak_append, array);
     }
 
   g_free (buf);
@@ -495,28 +482,59 @@ audio_fingerprint (const char *file)
 int
 audio_fingerprint_similarity (hash_array_t *array1, hash_array_t *array2)
 {
-  int dis, i, j;
-  audio_peak_hash *ph1, *ph2;
+  int best, count, delta;
+  gsize i, j;
+  audio_peak_hash *ph;
+  GArray *offsets;
+  GHashTable *table, *deltas;
 
   if (array1 == NULL || array2 == NULL)
     {
       return 0;
     }
 
-  dis = 0;
+  table = g_hash_table_new_full (g_str_hash, g_str_equal, NULL,
+                                 (GDestroyNotify)g_array_unref);
+  for (i = 0; i < hash_array_size (array2); ++i)
+    {
+      ph = hash_array_index (array2, i);
+      offsets = g_hash_table_lookup (table, ph->hash);
+      if (offsets == NULL)
+        {
+          offsets = g_array_new (FALSE, FALSE, sizeof (int));
+          g_hash_table_insert (table, ph->hash, offsets);
+        }
+      g_array_append_val (offsets, ph->offset);
+    }
+
+  best = 0;
+  deltas = g_hash_table_new (g_direct_hash, g_direct_equal);
   for (i = 0; i < hash_array_size (array1); ++i)
     {
-      ph1 = hash_array_index (array1, i);
-      for (j = 0; j < hash_array_size (array2); ++j)
+      ph = hash_array_index (array1, i);
+      offsets = g_hash_table_lookup (table, ph->hash);
+      if (offsets == NULL)
         {
-          ph2 = hash_array_index (array2, j);
-          if (strcmp (ph1->hash, ph2->hash) == 0)
+          continue;
+        }
+
+      for (j = 0; j < offsets->len; ++j)
+        {
+          delta = g_array_index (offsets, int, j) - ph->offset;
+          count = GPOINTER_TO_INT (
+                      g_hash_table_lookup (deltas, GINT_TO_POINTER (delta)))
+                  + 1;
+          g_hash_table_insert (deltas, GINT_TO_POINTER (delta),
+                               GINT_TO_POINTER (count));
+          if (count > best)
             {
-              dis++;
-              break;
+              best = count;
             }
         }
     }
 
-  return dis;
+  g_hash_table_destroy (deltas);
+  g_hash_table_destroy (table);
+
+  return best;
 }

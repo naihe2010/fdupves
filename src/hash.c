@@ -344,7 +344,7 @@ audio_hashes (const char *path)
 
   if (g_cache)
     {
-      if (cache_gets (g_cache, path, 0xFFFF, &hashArray))
+      if (cache_gets (g_cache, path, FDUPVES_AUDIO_HASH, &hashArray))
         {
           g_debug ("got %s cached peak hashes: %lu", path,
                    hash_array_size (hashArray));
@@ -361,7 +361,7 @@ audio_hashes (const char *path)
     {
       if (hashArray)
         {
-          cache_sets (g_cache, path, 0xFFFF, hashArray);
+          cache_sets (g_cache, path, FDUPVES_AUDIO_HASH, hashArray);
         }
     }
 
