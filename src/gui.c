@@ -37,11 +37,13 @@
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <gtk/gtk.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef WIN32
 #include <windows.h>
+#include <shellapi.h>
 #endif
 
 typedef struct
@@ -207,8 +209,6 @@ static void result_select_long_video (same_node *node, gui_t *);
 static void result_select_others (same_node *node, gui_t *);
 
 static void result_filter_changed (GtkEntry *, gui_t *);
-
-static void result_filter_focusin (GtkEntry *, gui_t *);
 
 static void result_selcombo_changed (GtkComboBox *, gui_t *);
 
@@ -661,11 +661,11 @@ res_tree_new (gui_t *gui)
   gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 2);
   entry = gtk_entry_new ();
   gtk_box_pack_start (GTK_BOX (hbox), entry, TRUE, TRUE, 2);
-  gtk_entry_set_text (GTK_ENTRY (entry), _ ("filename filter condition"));
+  gui->result_filter = entry;
+  gtk_entry_set_placeholder_text (GTK_ENTRY (entry),
+                                  _ ("filename filter condition"));
   g_signal_connect (G_OBJECT (entry), "changed",
                     G_CALLBACK (result_filter_changed), gui);
-  g_signal_connect (G_OBJECT (entry), "focus-in-event",
-                    G_CALLBACK (result_filter_focusin), gui);
 
   combo = gtk_combo_box_text_new ();
   gtk_box_pack_start (GTK_BOX (hbox), combo, FALSE, FALSE, 2);
@@ -1687,16 +1687,48 @@ gui_tree_store_iter_set_count (GtkTreeStore *store, GtkTreeIter *itr,
     }
 }
 
+static gboolean
+same_node_matches_filter (same_node *node, const gchar *filter)
+{
+  GSList *files;
+
+  for (files = node->files; files; files = files->next)
+    {
+      file_node *fn = files->data;
+      if (strstr (fn->path, filter))
+        {
+          return TRUE;
+        }
+    }
+  return FALSE;
+}
+
+static void
+same_node_to_tree_rows (GtkTreeStore *store, same_node *node,
+                        GtkTreeIter *itr)
+{
+  GtkTreeIter child[1];
+  GSList *files;
+  gint index;
+
+  file_node_to_tree_iter (node->files->data, store, itr);
+  for (index = 0, files = node->files->next; files;
+       files = files->next, ++index)
+    {
+      gui_tree_store_get_iter (store, child, itr, index);
+      file_node_to_tree_iter (files->data, store, child);
+    }
+  gui_tree_store_iter_set_count (store, itr, index);
+}
+
 static void
 gui_filter_result (gui_t *gui, const gchar *filter)
 {
-  GtkTreeIter itr[1], itrc[1];
-  gint index, index_c;
+  GtkTreeIter itr[1];
+  gint index;
   GtkTreePath *path;
-  GSList *nodelist, *filelist;
+  GSList *nodelist;
   same_node *node;
-  file_node *fn;
-  gboolean match;
 
   for (index = 0, nodelist = gui->same_list; nodelist != NULL;
        nodelist = g_slist_next (nodelist))
@@ -1715,32 +1747,10 @@ gui_filter_result (gui_t *gui, const gchar *filter)
           continue;
         }
 
-      if (filter == NULL)
-        {
-          match = TRUE;
-        }
-      else
-        {
-          match = FALSE;
-
-          for (filelist = node->files; filelist != NULL;
-               filelist = g_slist_next (filelist))
-            {
-              fn = filelist->data;
-
-              if (strstr (fn->path, filter))
-                {
-                  match = TRUE;
-                  break;
-                }
-            }
-        }
-
-      if (match)
+      if (same_node_matches_filter (node, filter))
         {
           gui_tree_store_get_iter (gui->result_store, itr, NULL, index++);
-          fn = node->files->data;
-          file_node_to_tree_iter (fn, gui->result_store, itr);
+          same_node_to_tree_rows (gui->result_store, node, itr);
 
           path = gtk_tree_model_get_path (GTK_TREE_MODEL (gui->result_store),
                                           itr);
@@ -1748,21 +1758,12 @@ gui_filter_result (gui_t *gui, const gchar *filter)
               GTK_TREE_MODEL (gui->result_store), path);
           gtk_tree_path_free (path);
 
-          for (index_c = 0, filelist = g_slist_next (node->files);
-               filelist != NULL; filelist = g_slist_next (filelist))
-            {
-              gui_tree_store_get_iter (gui->result_store, itrc, itr,
-                                       index_c++);
-              fn = filelist->data;
-              file_node_to_tree_iter (fn, gui->result_store, itrc);
-            }
-          gui_tree_store_iter_set_count (gui->result_store, itr, index_c);
-
           node->show = TRUE;
         }
     }
 
   gui_tree_store_iter_set_count (gui->result_store, NULL, index);
+  resultsel_onchanged (gui->result_select, gui);
 }
 
 #ifdef WIN32
@@ -1770,52 +1771,44 @@ static int
 win32_remove (gui_t *gui, const gchar *filename, gboolean totrash)
 {
   int ret;
-  gchar *lname, destfile[PATH_MAX], *d;
-  const gchar *p;
-  SHFILEOPSTRUCT FileOp;
+  gunichar2 *destfile;
+  glong length, i;
+  SHFILEOPSTRUCTW FileOp;
 
-  lname = g_locale_from_utf8 (filename, -1, NULL, NULL, NULL);
-  if (lname)
+  destfile = g_utf8_to_utf16 (filename, -1, NULL, &length, NULL);
+  if (!destfile)
     {
-      for (p = lname, d = destfile; *p; ++p, ++d)
-        {
-          *d = *p;
-          if (*d == '\\')
-            {
-              *(++d) = '\\';
-            }
-        }
-      *d = '\0';
-      *(d + 1) = '\0';
-      g_free (lname);
+      return ERROR_NO_UNICODE_TRANSLATION;
     }
-  else
+
+  destfile = g_renew (gunichar2, destfile, length + 2);
+  destfile[length + 1] = 0;
+  for (i = 0; i < length; ++i)
     {
-      for (p = filename, d = destfile; *p; ++p, ++d)
+      if (destfile[i] == '/')
         {
-          *d = *p;
-          if (*d == '\\')
-            {
-              *(++d) = '\\';
-            }
+          destfile[i] = '\\';
         }
-      *d = '\0';
-      *(d + 1) = '\0';
     }
 
   memset (&FileOp, 0, sizeof FileOp);
   FileOp.hwnd = HWND_DESKTOP;
   FileOp.wFunc = FO_DELETE;
   FileOp.fFlags = FOF_NOCONFIRMATION;
-  FileOp.pFrom = destfile;
-  FileOp.lpszProgressTitle = "Delete file";
+  FileOp.pFrom = (LPCWSTR)destfile;
+  FileOp.lpszProgressTitle = L"Delete file";
 
   if (totrash)
     {
       FileOp.fFlags |= FOF_ALLOWUNDO;
     }
 
-  ret = SHFileOperation (&FileOp);
+  ret = SHFileOperationW (&FileOp);
+  g_free (destfile);
+  if (ret == 0 && FileOp.fAnyOperationsAborted)
+    {
+      ret = ERROR_CANCELLED;
+    }
 
   return ret;
 }
@@ -1892,38 +1885,143 @@ gui_delete_dialog_ask (gui_t *gui, const gchar *filename, gint *pflags)
 }
 
 static void
+result_refresh (gui_t *gui, GSList *nodes)
+{
+  GSList *cur;
+  same_node *node;
+  GtkTreePath *path;
+  GtkTreeIter itr[1];
+  const gchar *filter;
+
+  filter = gtk_entry_get_text (GTK_ENTRY (gui->result_filter));
+  for (cur = nodes; cur; cur = cur->next)
+    {
+      node = cur->data;
+      if (!node->show)
+        {
+          continue;
+        }
+
+      path = gtk_tree_row_reference_get_path (node->treerowref);
+      if (path == NULL)
+        {
+          gtk_tree_row_reference_free (node->treerowref);
+          node->treerowref = NULL;
+          node->show = FALSE;
+          continue;
+        }
+      gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr, path);
+      gtk_tree_path_free (path);
+
+      if (node->files == NULL || !same_node_matches_filter (node, filter))
+        {
+          gtk_tree_store_remove (gui->result_store, itr);
+          gtk_tree_row_reference_free (node->treerowref);
+          node->treerowref = NULL;
+          node->show = FALSE;
+          continue;
+        }
+
+      same_node_to_tree_rows (gui->result_store, node, itr);
+    }
+}
+
+static void
 result_delete (GtkMenuItem *item, gui_t *gui)
 {
   gint last, i, res, ret, flags;
+  file_node **files;
+  file_node *fn;
+  GSList *deleted = NULL, *nodes = NULL, *cur, *n;
+  GList *list, *row;
+  GtkTreeIter itr[1];
+  GtkWidget *dia;
+  same_node *node;
+  gboolean dup;
+
+  list = gtk_tree_selection_get_selected_rows (gui->result_select, NULL);
+  last = g_list_length (list);
+  if (last == 0)
+    {
+      return;
+    }
+
+  files = g_new (file_node *, last);
+  for (i = 0, row = list; row; ++i, row = row->next)
+    {
+      gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
+                               row->data);
+      gtk_tree_model_get (GTK_TREE_MODEL (gui->result_store), itr, 5,
+                          files + i, -1);
+      gtk_tree_path_free (row->data);
+    }
+  g_list_free (list);
 
   res = 0;
   flags = 0;
-  last = sizeof (gui->result_file_nodes) / sizeof (gui->result_file_nodes[0]);
-  for (i = last - 1; i >= 0 && gui->result_file_nodes[i]; --i)
+  for (i = last - 1; i >= 0; --i)
     {
       if (res == 0)
         {
-          res = gui_delete_dialog_ask (gui, gui->result_file_nodes[i]->path,
-                                       &flags);
+          flags = 0;
+          res = gui_delete_dialog_ask (gui, files[i]->path, &flags);
+        }
+
+      if (res != GTK_RESPONSE_YES && res != GTK_RESPONSE_NO)
+        {
+          break;
         }
 
       if (res == GTK_RESPONSE_YES)
         {
-#ifdef WIN32
-          if (flags & FDUPVES_DEL_TOTRASH)
+          dup = FALSE;
+          for (cur = deleted; cur; cur = cur->next)
             {
-              ret = win32_remove (gui, gui->result_file_nodes[i]->path, TRUE);
+              fn = cur->data;
+              if (strcmp (fn->path, files[i]->path) == 0)
+                {
+                  dup = TRUE;
+                  break;
+                }
+            }
+
+          if (dup)
+            {
+              ret = 0;
             }
           else
             {
-              ret = win32_remove (gui, gui->result_file_nodes[i]->path, FALSE);
-            }
+#ifdef WIN32
+              ret = win32_remove (gui, files[i]->path,
+                                  (flags & FDUPVES_DEL_TOTRASH) != 0);
 #else
-          ret = g_remove (gui->result_file_nodes[i]->path);
+              ret = g_remove (files[i]->path);
+              if (ret != 0)
+                {
+                  ret = errno;
+                }
 #endif
+            }
+
           if (ret == 0)
             {
-              file_node_free_full (gui->result_file_nodes[i]);
+              deleted = g_slist_prepend (deleted, files[i]);
+            }
+          else
+            {
+              dia = gtk_message_dialog_new (
+                  GTK_WINDOW (gui->widget), GTK_DIALOG_DESTROY_WITH_PARENT,
+                  GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
+                  _ ("Could not delete %s"), files[i]->path);
+#ifdef WIN32
+              gtk_message_dialog_format_secondary_text (
+                  GTK_MESSAGE_DIALOG (dia), _ ("Error code: %d"), ret);
+#else
+              gtk_message_dialog_format_secondary_text (
+                  GTK_MESSAGE_DIALOG (dia), "%s", g_strerror (ret));
+#endif
+              gtk_dialog_run (GTK_DIALOG (dia));
+              gtk_widget_destroy (dia);
             }
         }
 
@@ -1933,7 +2031,48 @@ result_delete (GtkMenuItem *item, gui_t *gui)
         }
     }
 
-  gui_filter_result (gui, NULL);
+  g_free (files);
+  if (deleted == NULL)
+    {
+      return;
+    }
+
+  gtk_tree_selection_unselect_all (gui->result_select);
+  for (cur = gui->same_list; cur; cur = cur->next)
+    {
+      node = cur->data;
+      for (n = node->files; n; n = n->next)
+        {
+          fn = n->data;
+          fn->selected = FALSE;
+        }
+    }
+
+  for (cur = deleted; cur; cur = cur->next)
+    {
+      fn = cur->data;
+      if (!g_slist_find (nodes, fn->node))
+        {
+          nodes = g_slist_prepend (nodes, fn->node);
+        }
+    }
+
+  for (cur = deleted; cur; cur = cur->next)
+    {
+      for (n = nodes; n; n = n->next)
+        {
+          node = n->data;
+          if (g_slist_find (node->files, cur->data))
+            {
+              file_node_free_full (cur->data);
+              break;
+            }
+        }
+    }
+
+  result_refresh (gui, nodes);
+  g_slist_free (nodes);
+  g_slist_free (deleted);
 }
 
 static GtkWidget *
@@ -2405,14 +2544,6 @@ result_filter_changed (GtkEntry *entry, gui_t *gui)
 }
 
 static void
-result_filter_focusin (GtkEntry *entry, gui_t *gui)
-{
-  gtk_entry_set_text (GTK_ENTRY (entry), "");
-  g_signal_handlers_disconnect_by_func (
-      G_OBJECT (entry), G_CALLBACK (result_filter_focusin), gui);
-}
-
-static void
 result_selcombo_changed (GtkComboBox *comtext, gui_t *gui)
 {
   gint id;
@@ -2453,10 +2584,7 @@ result_selcombo_changed (GtkComboBox *comtext, gui_t *gui)
 static void
 gui_delete_seleted_cb (GtkWidget *but, gui_t *gui)
 {
-  if (gui->result_file_nodes && gui->result_file_nodes[0])
-    {
-      result_delete (NULL, gui);
-    }
+  result_delete (NULL, gui);
 }
 
 static file_node *
@@ -2548,10 +2676,10 @@ file_node_free_full (file_node *fn)
       cache_remove (g_cache, fn->path);
     }
 
-  file_node_free (fn);
   node->files = g_slist_remove (node->files, fn);
+  file_node_free (fn);
 
-  if (g_slist_length (node->files) == 1)
+  if (node->files && !node->files->next)
     {
       file_node_free_full (node->files->data);
     }

@@ -410,6 +410,16 @@ msgstr "应用此操作到所有其它文件"
 msgid "move file to trash, but not really delete it"
 msgstr "移动文件到回收站，而不是真正删除它"
 
+#: /home/p/Nutstore/project/fdupves/src/gui.c:2015
+#, c-format
+msgid "Could not delete %s"
+msgstr "无法删除 %s"
+
+#: /home/p/Nutstore/project/fdupves/src/gui.c:2018
+#, c-format
+msgid "Error code: %d"
+msgstr "错误代码：%d"
+
 #: /home/p/Nutstore/project/fdupves/src/gui.c:1780
 msgid "From Tail"
 msgstr "从尾开始"

@@ -71,6 +71,7 @@ struct gui_s
   GtkListStore *log_store;
 
   GtkWidget *result_tree;
+  GtkWidget *result_filter;
   GtkTreeStore *result_store;
   GtkTreeSelection *result_select;
   GtkTreeIter *result_select_iters;
