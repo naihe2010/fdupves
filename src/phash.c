@@ -37,69 +37,39 @@
 
 #define FDUPVES_DCT_LEN 8
 
+#define FDUPVES_VIDEO_SPACING 30.0f
+
+static gdouble coefficient[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN];
+
+static gdouble coefficient_t[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN];
+
 static gboolean buffer_dct (const gdouble *, gdouble *, gsize);
 
-static const gdouble *get_coefficient ();
-
-static const gdouble *get_coefficient_t ();
+static gpointer coefficient_init (gpointer);
 
 static void matrix_mul (const gdouble *, const gdouble *, gdouble *);
 
 static int dct_cmp (gconstpointer, gconstpointer);
 
-hash_t
-image_file_phash (const char *file)
-{
-  hash_t phash, dhash;
-
-  image_file_hashes (file, &phash, &dhash);
-
-  return phash;
-}
-
-hash_t
-buffer_phash (const char *buffer, int size)
-{
-  GdkPixbuf *buf;
-  GError *err;
-  hash_t h;
-
-  err = NULL;
-  buf = gdk_pixbuf_new_from_data (
-      (const guchar *)buffer, GDK_COLORSPACE_RGB, FALSE, 8, FDUPVES_PHASH_LEN,
-      FDUPVES_PHASH_LEN, FDUPVES_PHASH_LEN * 3, NULL, &err);
-  if (err)
-    {
-      g_warning ("Load inline data to pixbuf failed: %s", err->message);
-      g_error_free (err);
-      return 0;
-    }
-
-  h = pixbuf_phash (buf);
-  g_object_unref (buf);
-
-  return h;
-}
-
-hash_t
-video_time_phash (const char *file, float offset)
+static hash_t
+video_offset_phash (video_t *video, const char *file, float offset)
 {
   hash_t h;
   gchar buffer[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN * 3];
+  GdkPixbuf *buf, *area;
 #ifdef _DEBUG
   gchar *basename, outfile[PATH_MAX];
 #endif
 
-  if (g_cache)
+  if (g_cache
+      && cache_get (g_cache, file, offset,
+                    hash_cache_alg (FDUPVES_IMAGE_PHASH), &h))
     {
-      if (cache_get (g_cache, file, offset, FDUPVES_IMAGE_PHASH, &h))
-        {
-          return h;
-        }
+      return h;
     }
 
-  if (video_time_screenshot (file, offset, FDUPVES_PHASH_LEN,
-                             FDUPVES_PHASH_LEN, buffer, sizeof buffer)
+  if (video_screenshot (video, offset, FDUPVES_PHASH_LEN, FDUPVES_PHASH_LEN,
+                        buffer, sizeof buffer)
       < 0)
     {
       return 0;
@@ -113,17 +83,61 @@ video_time_phash (const char *file, float offset)
                               FDUPVES_PHASH_LEN * 100, outfile);
 #endif
 
-  h = buffer_phash (buffer, sizeof buffer);
+  buf = gdk_pixbuf_new_from_data (
+      (const guchar *)buffer, GDK_COLORSPACE_RGB, FALSE, 8, FDUPVES_PHASH_LEN,
+      FDUPVES_PHASH_LEN, FDUPVES_PHASH_LEN * 3, NULL, NULL);
+  area = pixbuf_compare_area (buf);
+  h = pixbuf_phash (area);
+  g_object_unref (area);
+  g_object_unref (buf);
 
-  if (g_cache)
+  if (g_cache && h)
     {
-      if (h)
-        {
-          cache_set (g_cache, file, offset, FDUPVES_IMAGE_PHASH, h);
-        }
+      cache_set (g_cache, file, offset, hash_cache_alg (FDUPVES_IMAGE_PHASH),
+                 h);
     }
 
   return h;
+}
+
+float
+video_phashes (const char *file, hash_t *head, hash_t *tail, int count)
+{
+  video_t *video;
+  double length;
+  float spacing;
+  int k;
+
+  video = video_open (file, &length);
+  if (video == NULL)
+    {
+      return 0;
+    }
+
+  if (length > 0)
+    {
+      spacing = MIN (FDUPVES_VIDEO_SPACING, (float)length / (count + 1));
+      for (k = 0; k < count; ++k)
+        {
+          head[k] = video_offset_phash (video, file, spacing * (k + 1));
+        }
+      for (k = count - 1; k >= 0; --k)
+        {
+          if (length <= FDUPVES_VIDEO_SPACING * (count + 1))
+            {
+              tail[k] = head[count - 1 - k];
+            }
+          else
+            {
+              tail[k] = video_offset_phash (
+                  video, file, (float)length - spacing * (k + 1));
+            }
+        }
+    }
+
+  video_close (video);
+
+  return length;
 }
 
 hash_t
@@ -216,79 +230,50 @@ dct_cmp (gconstpointer a, gconstpointer b)
 static gboolean
 buffer_dct (const gdouble *pix, gdouble *out_pix, gsize out_len)
 {
-  const gdouble *quotient, *quotientT;
+  static GOnce once = G_ONCE_INIT;
   gdouble temp[FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN];
 
   g_assert (out_len >= FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN);
 
-  quotient = get_coefficient ();
-  quotientT = get_coefficient_t ();
+  g_once (&once, coefficient_init, NULL);
 
-  matrix_mul (quotient, pix, temp);
-  matrix_mul (temp, quotientT, out_pix);
+  matrix_mul (coefficient, pix, temp);
+  matrix_mul (temp, coefficient_t, out_pix);
 
   return TRUE;
 }
 
-static const gdouble *
-get_coefficient_t ()
+static gpointer
+coefficient_init (gpointer data)
 {
   gsize i, j;
-  static gdouble *coeff_s;
-  const gdouble *c;
-
-  if (coeff_s)
-    {
-      return coeff_s;
-    }
-
-  coeff_s = g_new (gdouble, FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN);
-  g_assert (coeff_s);
-
-  c = get_coefficient ();
-
-  for (i = 0; i < FDUPVES_PHASH_LEN; i++)
-    {
-      for (j = 0; j < FDUPVES_PHASH_LEN; j++)
-        {
-          coeff_s[i * FDUPVES_PHASH_LEN + j] = c[j * FDUPVES_PHASH_LEN + i];
-        }
-    }
-
-  return coeff_s;
-}
-
-static const gdouble *
-get_coefficient ()
-{
-  gsize i, j;
-  static gdouble *coeff_s = NULL;
   gdouble s;
-
-  if (coeff_s)
-    {
-      return coeff_s;
-    }
-
-  coeff_s = g_new (gdouble, FDUPVES_PHASH_LEN * FDUPVES_PHASH_LEN);
-  g_assert (coeff_s);
 
   s = 1.0 / sqrt (FDUPVES_PHASH_LEN);
   for (i = 0; i < FDUPVES_PHASH_LEN; i++)
     {
-      coeff_s[i] = s;
+      coefficient[i] = s;
     }
   for (i = 1; i < FDUPVES_PHASH_LEN; i++)
     {
       for (j = 0; j < FDUPVES_PHASH_LEN; j++)
         {
-          coeff_s[i * FDUPVES_PHASH_LEN + j]
+          coefficient[i * FDUPVES_PHASH_LEN + j]
               = sqrt (2.0 / FDUPVES_PHASH_LEN)
                 * cos (i * M_PI * (j + 0.5) / (gdouble)FDUPVES_PHASH_LEN);
         }
     }
 
-  return coeff_s;
+  for (i = 0; i < FDUPVES_PHASH_LEN; i++)
+    {
+      for (j = 0; j < FDUPVES_PHASH_LEN; j++)
+        {
+          coefficient_t[i * FDUPVES_PHASH_LEN + j]
+              = coefficient[j * FDUPVES_PHASH_LEN + i];
+        }
+    }
+
+  return data;
 }
 
 static void

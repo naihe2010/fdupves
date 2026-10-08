@@ -30,6 +30,8 @@
 
 #include <glib.h>
 
+#define FDUPVES_INI_VERSION 1
+
 ini_t *g_ini;
 
 static void ini_free (ini_t *);
@@ -179,16 +181,21 @@ ini_load (ini_t *ini, const gchar *file)
     {
       ini->same_video_distance = SAME_RATE_MAX - level;
     }
-  level = g_key_file_get_integer (ini->keyfile, "_", "same_audio_rate", &err);
-  if (err)
+  if (g_key_file_get_integer (ini->keyfile, "_", "version", NULL)
+      >= FDUPVES_INI_VERSION)
     {
-      g_warning ("configuration file: %s value error: %s, set as default.",
-                 file, err->message);
-      g_error_free (err);
-    }
-  else
-    {
-      ini->same_audio_distance = SAME_RATE_MAX - level;
+      level = g_key_file_get_integer (ini->keyfile, "_", "same_audio_rate",
+                                      &err);
+      if (err)
+        {
+          g_warning ("configuration file: %s value error: %s, set as default.",
+                     file, err->message);
+          g_error_free (err);
+        }
+      else
+        {
+          ini->same_audio_distance = SAME_RATE_MAX - level;
+        }
     }
 
   count = g_key_file_get_integer (ini->keyfile, "_", "threads_count", &err);
@@ -270,6 +277,8 @@ ini_save (ini_t *ini, const gchar *file)
   __ini_save_type (video);
   __ini_save_type (audio);
   __ini_save_type (ebook);
+
+  g_key_file_set_integer (ini->keyfile, "_", "version", FDUPVES_INI_VERSION);
 
   g_key_file_set_integer (ini->keyfile, "_", "same_image_rate",
                           SAME_RATE_MAX - ini->same_image_distance);

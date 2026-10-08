@@ -29,6 +29,9 @@
 #include "ebook.h"
 #include "util.h"
 
+#define FDUPVES_EBOOK_TEXT_MAX 65536
+#define FDUPVES_EBOOK_PAGES_MAX 8
+
 static void
 pdf_get_cover_hash (fz_context *ctx, fz_document *doc, ebook_hash_t *ehash)
 {
@@ -76,8 +79,11 @@ pdf_get_text_hash (fz_context *ctx, fz_document *doc, ebook_hash_t *ehash)
   fz_try (ctx)
   {
     text = fz_new_buffer (ctx, 4096);
-    n = MIN (fz_count_pages (ctx, doc), 8);
-    for (i = 0; i < n && fz_buffer_storage (ctx, text, &data) < 65536; ++i)
+    n = MIN (fz_count_pages (ctx, doc), FDUPVES_EBOOK_PAGES_MAX);
+    for (i = 0;
+         i < n
+         && fz_buffer_storage (ctx, text, &data) < FDUPVES_EBOOK_TEXT_MAX;
+         ++i)
       {
         page = fz_new_buffer_from_page_number (ctx, doc, i, &opts);
         fz_append_buffer (ctx, text, page);
@@ -90,7 +96,8 @@ pdf_get_text_hash (fz_context *ctx, fz_document *doc, ebook_hash_t *ehash)
     fz_drop_buffer (ctx, page);
     if (text)
       {
-        len = MIN (fz_buffer_storage (ctx, text, &data), 65536);
+        len = MIN (fz_buffer_storage (ctx, text, &data),
+                   FDUPVES_EBOOK_TEXT_MAX);
         ehash->text_hash = text_simhash ((const char *)data, len);
       }
     fz_drop_buffer (ctx, text);

@@ -41,57 +41,90 @@
 
 #define FDUPVES_VIDEO_BLACK 24
 
-video_info *
-video_get_info (const char *file)
+struct video_s
 {
-  video_info *info;
-  AVFormatContext *fmt_ctx = NULL;
-  AVStream *stream = NULL;
-  int s, ret;
+  const char *file;
+  AVFormatContext *format_ctx;
+  AVStream *stream;
+  AVCodecContext *codec_ctx;
+  AVFrame *frame;
+  AVFrame *next;
+  AVPacket *packet;
+  gboolean broken;
+};
 
-  ret = avformat_open_input (&fmt_ctx, file, NULL, NULL);
-  if (ret != 0)
+video_t *
+video_open (const char *file, double *length)
+{
+  video_t *video;
+  AVFormatContext *format_ctx = NULL;
+  AVStream *stream;
+  int s;
+
+  if (avformat_open_input (&format_ctx, file, NULL, NULL) != 0)
     {
       g_warning (_ ("could not open: %s"), file);
       return NULL;
     }
 
   /*
-  if (avformat_find_stream_info (fmt_ctx, NULL) < 0)
+  if (avformat_find_stream_info (format_ctx, NULL) < 0)
     {
       g_warning (_ ("could not find stream infomations: %s"), file);
-      avformat_close_input (&fmt_ctx);
+      avformat_close_input (&format_ctx);
       return NULL;
     }*/
 
-  s = av_find_best_stream (fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+  s = av_find_best_stream (format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (s < 0)
     {
       g_warning (_ ("could not find video stream: %s"), file);
-      avformat_close_input (&fmt_ctx);
+      avformat_close_input (&format_ctx);
       return NULL;
     }
+  stream = format_ctx->streams[s];
 
-  stream = fmt_ctx->streams[s];
+  if (stream->duration != AV_NOPTS_VALUE)
+    {
+      *length = (double)(stream->duration * stream->time_base.num)
+                / stream->time_base.den;
+    }
+  else
+    {
+      *length = (double)(format_ctx->duration) / AV_TIME_BASE;
+    }
+
+  video = g_new0 (video_t, 1);
+  video->file = file;
+  video->format_ctx = format_ctx;
+  video->stream = stream;
+
+  return video;
+}
+
+video_info *
+video_get_info (const char *file)
+{
+  video_info *info;
+  video_t *video;
+  double length;
+
+  video = video_open (file, &length);
+  if (video == NULL)
+    {
+      return NULL;
+    }
 
   info = g_malloc0 (sizeof (video_info));
 
   info->name = g_path_get_basename (file);
   info->dir = g_path_get_dirname (file);
-  if (stream->duration != AV_NOPTS_VALUE)
-    {
-      info->length = (double)(stream->duration * stream->time_base.num)
-                     / stream->time_base.den;
-    }
-  else
-    {
-      info->length = (double)(fmt_ctx->duration) / AV_TIME_BASE;
-    }
-  info->size[0] = stream->codecpar->width;
-  info->size[1] = stream->codecpar->height;
-  info->format = avcodec_get_name (stream->codecpar->codec_id);
+  info->length = length;
+  info->size[0] = video->stream->codecpar->width;
+  info->size[1] = video->stream->codecpar->height;
+  info->format = avcodec_get_name (video->stream->codecpar->codec_id);
 
-  avformat_close_input (&fmt_ctx);
+  video_close (video);
 
   return info;
 }
@@ -102,23 +135,6 @@ video_info_free (video_info *info)
   g_free (info->name);
   g_free (info->dir);
   g_free (info);
-}
-
-int
-video_get_length (const char *file)
-{
-  video_info *info;
-  int length;
-
-  length = 0;
-  info = video_get_info (file);
-  if (info)
-    {
-      length = (int)info->length;
-      video_info_free (info);
-    }
-
-  return length;
 }
 
 static int
@@ -261,136 +277,126 @@ video_frame_render (const AVFrame *frame, int rotation, int width, int height,
   return ret;
 }
 
-int
-video_time_screenshot (const char *file, double time, int width, int height,
-                       char *buffer, int buf_len)
+static void
+video_close_decoder (video_t *video)
 {
-  AVFormatContext *format_ctx = NULL;
-  AVCodecContext *codec_ctx = NULL;
-  const AVCodec *codec = NULL;
-  AVStream *stream;
-  AVFrame *frame, *next, *frame_rgb;
-  AVPacket *packet;
-  int s, ret, bytes, decoded, reached;
-  int64_t seek_target;
+  av_packet_free (&video->packet);
+  av_frame_free (&video->next);
+  av_frame_free (&video->frame);
+  avcodec_free_context (&video->codec_ctx);
+}
 
-  if (avformat_open_input (&format_ctx, file, NULL, NULL) != 0)
-    {
-      g_warning (_ ("could not open: %s"), file);
-      return -1;
-    }
+static int
+video_open_decoder (video_t *video)
+{
+  const AVCodec *codec;
 
-  /*
-  if (avformat_find_stream_info (format_ctx, NULL) < 0)
-    {
-      g_warning (_ ("could not find stream infomations: %s"), file);
-      avformat_close_input (&format_ctx);
-      return -1;
-    }*/
-
-  s = av_find_best_stream (format_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-  if (s < 0)
-    {
-      g_warning (_ ("could not find video stream: %s"), file);
-      avformat_close_input (&format_ctx);
-      return -1;
-    }
-  stream = format_ctx->streams[s];
-
-  codec = avcodec_find_decoder (stream->codecpar->codec_id);
+  codec = avcodec_find_decoder (video->stream->codecpar->codec_id);
   if (codec == NULL)
     {
-      g_warning (_ ("Unsupported codec: %s"), file);
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
+      g_warning (_ ("Unsupported codec: %s"), video->file);
       return -1;
     }
 
-  codec_ctx = avcodec_alloc_context3 (codec);
-  if (codec_ctx == NULL)
+  video->codec_ctx = avcodec_alloc_context3 (codec);
+  if (video->codec_ctx == NULL
+      || avcodec_parameters_to_context (video->codec_ctx,
+                                        video->stream->codecpar)
+             < 0)
     {
-      g_warning (_ ("Memory error: %s"), file);
-      avformat_close_input (&format_ctx);
+      g_warning (_ ("Memory error: %s"), video->file);
+      video_close_decoder (video);
       return -1;
     }
 
-  ret = avcodec_parameters_to_context (codec_ctx, stream->codecpar);
-  if (ret < 0)
-    {
-      g_warning (_ ("Memory error: %s"), file);
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
-      return -1;
-    }
-
-  codec_ctx->pkt_timebase = stream->time_base;
+  video->codec_ctx->pkt_timebase = video->stream->time_base;
   // av_codec_set_pkt_timebase (codec_ctx, format_ctx->streams[s]->time_base);
 
-  if (avcodec_open2 (codec_ctx, codec, NULL) < 0)
+  if (avcodec_open2 (video->codec_ctx, codec, NULL) < 0)
     {
-      g_warning (_ ("Open codec error: %s"), file);
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
+      g_warning (_ ("Open codec error: %s"), video->file);
+      video_close_decoder (video);
       return -1;
     }
 
-  frame = av_frame_alloc ();
-  next = av_frame_alloc ();
-  frame_rgb = av_frame_alloc ();
-  packet = av_packet_alloc ();
-  if (frame == NULL || next == NULL || frame_rgb == NULL || packet == NULL)
+  video->frame = av_frame_alloc ();
+  video->next = av_frame_alloc ();
+  video->packet = av_packet_alloc ();
+  if (video->frame == NULL || video->next == NULL || video->packet == NULL)
     {
-      av_packet_free (&packet);
-      av_frame_free (&frame_rgb);
-      av_frame_free (&next);
-      av_frame_free (&frame);
-      avcodec_free_context (&codec_ctx);
-      avformat_close_input (&format_ctx);
+      video_close_decoder (video);
       return -1;
     }
-  bytes = av_image_fill_arrays (frame_rgb->data, frame_rgb->linesize,
-                                (uint8_t *)buffer, AV_PIX_FMT_RGB24, width,
-                                height, 1);
-  if (buf_len < bytes)
+
+  return 0;
+}
+
+int
+video_screenshot (video_t *video, double time, int width, int height,
+                  char *buffer, int buf_len)
+{
+  AVStream *stream;
+  uint8_t *data[4];
+  int linesize[4];
+  int ret, bytes, decoded, reached;
+  int64_t seek_target;
+
+  if (video->broken)
     {
-      bytes = -1;
+      return -1;
+    }
+  if (video->packet == NULL && video_open_decoder (video) < 0)
+    {
+      video->broken = TRUE;
+      return -1;
     }
 
+  bytes = av_image_fill_arrays (data, linesize, (uint8_t *)buffer,
+                                AV_PIX_FMT_RGB24, width, height, 1);
+  if (bytes < 0 || buf_len < bytes)
+    {
+      return -1;
+    }
+
+  stream = video->stream;
   seek_target = (int64_t)llround (time * stream->time_base.den
                                   / stream->time_base.num);
   if (stream->start_time != AV_NOPTS_VALUE)
     {
       seek_target += stream->start_time;
     }
-  av_seek_frame (format_ctx, s, seek_target, AVSEEK_FLAG_BACKWARD);
+  av_seek_frame (video->format_ctx, stream->index, seek_target,
+                 AVSEEK_FLAG_BACKWARD);
+  avcodec_flush_buffers (video->codec_ctx);
 
   decoded = 0;
   reached = 0;
-  while (bytes >= 0 && !reached)
+  while (!reached)
     {
-      ret = av_read_frame (format_ctx, packet);
+      ret = av_read_frame (video->format_ctx, video->packet);
       if (ret < 0)
         {
-          avcodec_send_packet (codec_ctx, NULL);
+          avcodec_send_packet (video->codec_ctx, NULL);
         }
-      else if (packet->stream_index != s)
+      else if (video->packet->stream_index != stream->index)
         {
-          av_packet_unref (packet);
+          av_packet_unref (video->packet);
           continue;
         }
       else
         {
-          avcodec_send_packet (codec_ctx, packet);
-          av_packet_unref (packet);
+          avcodec_send_packet (video->codec_ctx, video->packet);
+          av_packet_unref (video->packet);
         }
 
-      while (!reached && avcodec_receive_frame (codec_ctx, next) == 0)
+      while (!reached
+             && avcodec_receive_frame (video->codec_ctx, video->next) == 0)
         {
-          av_frame_unref (frame);
-          av_frame_move_ref (frame, next);
+          av_frame_unref (video->frame);
+          av_frame_move_ref (video->frame, video->next);
           decoded = 1;
-          reached = frame->best_effort_timestamp == AV_NOPTS_VALUE
-                    || frame->best_effort_timestamp >= seek_target;
+          reached = video->frame->best_effort_timestamp == AV_NOPTS_VALUE
+                    || video->frame->best_effort_timestamp >= seek_target;
         }
 
       if (ret < 0)
@@ -400,23 +406,42 @@ video_time_screenshot (const char *file, double time, int width, int height,
     }
 
   if (!decoded
-      || video_frame_render (frame, video_stream_rotation (stream), width,
-                             height, frame_rgb->data, frame_rgb->linesize)
+      || video_frame_render (video->frame, video_stream_rotation (stream),
+                             width, height, data, linesize)
              < 0)
     {
-      bytes = -1;
+      return -1;
     }
 
-  av_packet_free (&packet);
-  av_frame_free (&frame_rgb);
-  av_frame_free (&next);
-  av_frame_free (&frame);
-
-  avcodec_free_context (&codec_ctx);
-
-  avformat_close_input (&format_ctx);
-
   return bytes;
+}
+
+void
+video_close (video_t *video)
+{
+  video_close_decoder (video);
+  avformat_close_input (&video->format_ctx);
+  g_free (video);
+}
+
+int
+video_time_screenshot (const char *file, double time, int width, int height,
+                       char *buffer, int buf_len)
+{
+  video_t *video;
+  double length;
+  int ret;
+
+  video = video_open (file, &length);
+  if (video == NULL)
+    {
+      return -1;
+    }
+
+  ret = video_screenshot (video, time, width, height, buffer, buf_len);
+  video_close (video);
+
+  return ret;
 }
 
 int

@@ -29,6 +29,8 @@
 
 #define FDUPVES_VIDEO_PROBE_LEN 128
 
+typedef struct video_s video_t;
+
 typedef struct
 {
   /* filename */
@@ -51,7 +53,12 @@ video_info *video_get_info (const char *file);
 
 void video_info_free (video_info *info);
 
-int video_get_length (const char *file);
+video_t *video_open (const char *file, double *length);
+
+int video_screenshot (video_t *video, double time, int width, int height,
+                      char *buffer, int buf_len);
+
+void video_close (video_t *video);
 
 int video_time_screenshot (const char *file, double time, int width,
                            int height, char *buffer, int buf_len);

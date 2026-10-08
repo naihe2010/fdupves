@@ -51,6 +51,8 @@ struct cache_s
 {
   sqlite3 *db;
   gchar *file;
+  GMutex lock;
+  GHashTable *verified;
 };
 
 static gboolean cache_exec (cache_t *cache, int (*cb) (sqlite3_stmt *, void *),
@@ -98,6 +100,9 @@ cache_open (const gchar *file)
   g_return_val_if_fail (cache, NULL);
 
   cache->file = g_strdup (file);
+  g_mutex_init (&cache->lock);
+  cache->verified = g_hash_table_new_full (g_str_hash, g_str_equal, g_free,
+                                           NULL);
 
   needInit = FALSE;
   if (g_file_test (file, G_FILE_TEST_EXISTS) == FALSE)
@@ -111,6 +116,9 @@ cache_open (const gchar *file)
   if (sqlite3_open (file, &cache->db) != 0)
     {
       g_warning ("Open cache file: %s failed:%s.", file, strerror (errno));
+      g_hash_table_destroy (cache->verified);
+      g_mutex_clear (&cache->lock);
+      g_free (cache->file);
       g_free (cache);
       return NULL;
     }
@@ -153,6 +161,8 @@ void
 cache_close (cache_t *cache)
 {
   sqlite3_close (cache->db);
+  g_hash_table_destroy (cache->verified);
+  g_mutex_clear (&cache->lock);
   g_free (cache->file);
   g_free (cache);
 }
@@ -167,7 +177,7 @@ cache_exec (cache_t *cache, int (*cb) (sqlite3_stmt *, void *), void *arg,
   sqlite3_stmt *stmt = NULL;
   int index;
   int valuei;
-  long valuel;
+  gint64 valuel;
   const char *values;
   double valued;
 
@@ -186,9 +196,9 @@ cache_exec (cache_t *cache, int (*cb) (sqlite3_stmt *, void *), void *arg,
           valuei = va_arg (ap, int);
           sqlite3_bind_int (stmt, index++, valuei);
         }
-      else if (*fmt == 'l')
+      else if (*fmt == 'L')
         {
-          valuel = va_arg (ap, long);
+          valuel = va_arg (ap, gint64);
           sqlite3_bind_int64 (stmt, index++, valuel);
         }
       else if (*fmt == 'f')
@@ -218,6 +228,7 @@ cache_exec (cache_t *cache, int (*cb) (sqlite3_stmt *, void *), void *arg,
     {
       errMsg = sqlite3_errstr (rc);
       g_warning ("SQL error: %s in [%s]", errMsg, sql);
+      sqlite3_finalize (stmt);
       return FALSE;
     }
 
@@ -267,7 +278,7 @@ get_hash_array_callback (sqlite3_stmt *stmt, void *para)
   return 0;
 }
 
-static long
+static gint64
 cache_stat_mtime (GStatBuf *buf)
 {
 #if WIN32
@@ -281,26 +292,51 @@ static int
 cache_get_media_id (cache_t *cache, const gchar *file)
 {
   int media_id;
+  int same_id;
+  gpointer value;
+  gboolean found;
   gboolean ret;
+  GStatBuf buf[1];
+
+  g_mutex_lock (&cache->lock);
+  found = g_hash_table_lookup_extended (cache->verified, file, NULL, &value);
+  g_mutex_unlock (&cache->lock);
+  if (found)
+    return GPOINTER_TO_INT (value);
+
+  if (g_stat (file, buf) != 0)
+    {
+      g_warning ("stat error: %s", strerror (errno));
+      return -1;
+    }
 
   media_id = -1;
   ret = cache_exec (cache, get_id_callback, &media_id,
                     "select id from media where path=?;", "%s", file);
   g_return_val_if_fail (ret, -1);
 
+  if (media_id != -1)
+    {
+      same_id = -1;
+      ret = cache_exec (cache, get_id_callback, &same_id,
+                        "select id from media where id=? and size=? and "
+                        "mtime=?;",
+                        "%d, %L, %L", media_id, (gint64)buf->st_size,
+                        cache_stat_mtime (buf));
+      g_return_val_if_fail (ret, -1);
+      if (same_id == -1)
+        {
+          cache_remove_by_id (cache, media_id);
+          media_id = -1;
+        }
+    }
+
   if (media_id == -1)
     {
-      GStatBuf buf[1];
-      if (g_stat (file, buf) != 0)
-        {
-          g_warning ("stat error: %s", strerror (errno));
-          return -1;
-        }
-
       ret = cache_exec (
           cache, NULL, NULL,
           "insert into media(path, size, mtime) values(?, ?, ?);",
-          "%s, %l, %l", file, buf->st_size, cache_stat_mtime (buf));
+          "%s, %L, %L", file, (gint64)buf->st_size, cache_stat_mtime (buf));
       g_return_val_if_fail (ret, -1);
 
       ret = cache_exec (cache, get_id_callback, &media_id,
@@ -308,36 +344,12 @@ cache_get_media_id (cache_t *cache, const gchar *file)
       g_return_val_if_fail (ret, -1);
     }
 
+  g_mutex_lock (&cache->lock);
+  g_hash_table_insert (cache->verified, g_strdup (file),
+                       GINT_TO_POINTER (media_id));
+  g_mutex_unlock (&cache->lock);
+
   return media_id;
-}
-
-static gboolean
-cache_drop_if_stale (cache_t *cache, int media_id, const gchar *file)
-{
-  GStatBuf buf[1];
-  int same_id;
-
-  if (g_stat (file, buf) != 0)
-    {
-      return FALSE;
-    }
-
-  same_id = -1;
-  if (!cache_exec (cache, get_id_callback, &same_id,
-                   "select id from media where id=? and size=? and mtime=?;",
-                   "%d, %l, %l", media_id, buf->st_size,
-                   cache_stat_mtime (buf)))
-    {
-      return FALSE;
-    }
-
-  if (same_id != -1)
-    {
-      return FALSE;
-    }
-
-  cache_remove_by_id (cache, media_id);
-  return TRUE;
 }
 
 gboolean
@@ -348,8 +360,6 @@ cache_get (cache_t *cache, const gchar *file, float off, int alg, hash_t *hp)
 
   media_id = cache_get_media_id (cache, file);
   g_return_val_if_fail (media_id != -1, FALSE);
-  if (cache_drop_if_stale (cache, media_id, file))
-    return FALSE;
 
   *hp = 0;
   ret = cache_exec (
@@ -373,7 +383,7 @@ cache_set (cache_t *cache, const gchar *file, float off, int alg, hash_t h)
   ret = cache_exec (
       cache, NULL, NULL,
       "insert into hash(media_id, offset, alg, hash) values(?, ?, ?, ?);",
-      "%d %f %d %l", media_id, off, alg, h);
+      "%d %f %d %L", media_id, off, alg, (gint64)h);
   g_return_val_if_fail (ret, FALSE);
 
   return TRUE;
@@ -388,8 +398,6 @@ cache_gets (cache_t *cache, const gchar *file, int alg,
 
   media_id = cache_get_media_id (cache, file);
   g_return_val_if_fail (media_id != -1, FALSE);
-  if (cache_drop_if_stale (cache, media_id, file))
-    return FALSE;
 
   *pHashArray = NULL;
   ret = cache_exec (
@@ -440,9 +448,10 @@ cache_set_ebook (cache_t *cache, const char *file, ebook_hash_t *h)
       "pubdate_year, pubdate_mon, pubdate_day, isbn, text_hash) values(?, ?, "
       "?, ?, ?, ?, "
       "?, ?, ?, ?);",
-      "%d, %l, %s, %s, %s, %d, %d, %d, %s, %l", media_id, h->cover_hash,
-      h->title, h->author, h->producer, h->public_date.year,
-      h->public_date.month, h->public_date.day, h->isbn, h->text_hash);
+      "%d, %L, %s, %s, %s, %d, %d, %d, %s, %L", media_id,
+      (gint64)h->cover_hash, h->title, h->author, h->producer,
+      h->public_date.year, h->public_date.month, h->public_date.day, h->isbn,
+      (gint64)h->text_hash);
 }
 
 struct ebook_result
@@ -485,8 +494,6 @@ cache_get_ebook (cache_t *cache, const char *file, ebook_hash_t *h)
 
   media_id = cache_get_media_id (cache, file);
   g_return_val_if_fail (media_id != -1, FALSE);
-  if (cache_drop_if_stale (cache, media_id, file))
-    return FALSE;
 
   result->got = 0;
   result->hash = h;
@@ -513,10 +520,17 @@ cache_remove (cache_t *cache, const gchar *file)
 {
   int media_id;
 
-  media_id = cache_get_media_id (cache, file);
-  g_return_val_if_fail (media_id != -1, FALSE);
+  media_id = -1;
+  if (!cache_exec (cache, get_id_callback, &media_id,
+                   "select id from media where path=?;", "%s", file))
+    return FALSE;
+  if (media_id == -1)
+    return FALSE;
 
   cache_remove_by_id (cache, media_id);
+  g_mutex_lock (&cache->lock);
+  g_hash_table_remove (cache->verified, file);
+  g_mutex_unlock (&cache->lock);
   return TRUE;
 }
 
@@ -532,6 +546,9 @@ cache_remove_if_no_exists_callback (sqlite3_stmt *stmt, void *para)
     {
       media_id = sqlite3_column_int (stmt, 0);
       cache_remove_by_id (cache, media_id);
+      g_mutex_lock (&cache->lock);
+      g_hash_table_remove (cache->verified, path);
+      g_mutex_unlock (&cache->lock);
     }
   return 0;
 }

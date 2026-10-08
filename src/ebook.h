@@ -48,6 +48,11 @@ typedef struct
   } public_date;
 
   char isbn[FDUPVES_ISBN_LEN];
+
+  gboolean normalized;
+  char norm_isbn[FDUPVES_ISBN_LEN];
+  char norm_title[FDUPVES_TITLE_LEN];
+  char norm_author[FDUPVES_AUTHOR_LEN];
 } ebook_hash_t;
 
 int ebook_file_hash (const char *file, ebook_hash_t *ehash);

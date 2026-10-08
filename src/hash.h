@@ -41,8 +41,6 @@ enum hash_type
 
 #define FDUPVES_PHASH_LEN 32
 
-extern const char *hash_phrase[];
-
 typedef unsigned long long hash_t;
 
 typedef struct
@@ -50,19 +48,15 @@ typedef struct
   GPtrArray *array;
 } hash_array_t;
 
-hash_t image_file_hash (const char *);
-
-hash_t image_buffer_hash (const char *, int);
-
-hash_t video_time_hash (const char *, float);
-
-hash_t video_time_phash (const char *, float);
-
-hash_t image_file_phash (const char *);
+float video_phashes (const char *, hash_t *, hash_t *, int);
 
 int image_file_hashes (const char *, hash_t *, hash_t *);
 
 hash_t pixbuf_phash (GdkPixbuf *);
+
+int hash_cache_alg (int);
+
+GdkPixbuf *pixbuf_compare_area (GdkPixbuf *);
 
 hash_array_t *audio_hashes (const char *);
 

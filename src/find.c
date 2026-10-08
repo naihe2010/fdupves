@@ -36,23 +36,20 @@
 #include <glib/gstdio.h>
 #include <string.h>
 
-#ifndef FD_COMP_CNT
-#define FD_COMP_CNT 2
-#endif
-
 #define FDUPVES_VIDEO_SAMPLES 8
 
 struct st_file
 {
   const char *path;
   float length;
-  hash_t hashes[FDUPVES_VIDEO_SAMPLES];
+  hash_t head[FDUPVES_VIDEO_SAMPLES];
+  hash_t tail[FDUPVES_VIDEO_SAMPLES];
   hash_array_t *hashArray;
 };
 
 struct st_find
 {
-  GPtrArray *ptr[0x10];
+  GPtrArray *ptr;
   find_type type;
   find_step *step;
   find_step_cb cb;
@@ -70,22 +67,24 @@ static int audio_hashes_func (struct st_file *file);
 
 static void st_file_free (struct st_file *);
 
-static gboolean
-same_file_content (const char *a, const char *b)
+static gchar *
+file_digest (const char *path)
 {
-  gchar *abuf, *bbuf;
-  gsize alen, blen;
-  gboolean same;
+  GMappedFile *map;
+  gchar *digest;
 
-  abuf = NULL;
-  bbuf = NULL;
-  same = g_file_get_contents (a, &abuf, &alen, NULL)
-         && g_file_get_contents (b, &bbuf, &blen, NULL) && alen == blen
-         && memcmp (abuf, bbuf, alen) == 0;
-  g_free (abuf);
-  g_free (bbuf);
+  map = g_mapped_file_new (path, FALSE, NULL);
+  if (map == NULL)
+    {
+      return NULL;
+    }
 
-  return same;
+  digest = g_compute_checksum_for_data (
+      G_CHECKSUM_SHA256, (const guchar *)g_mapped_file_get_contents (map),
+      g_mapped_file_get_length (map));
+  g_mapped_file_unref (map);
+
+  return digest;
 }
 
 int
@@ -96,6 +95,7 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   gboolean same;
   hash_t *phashs, *dhashs;
   goffset *sizes;
+  gchar **digests;
   GStatBuf st[1];
   const char *file;
   find_step step[1];
@@ -105,6 +105,7 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   phashs = g_new0 (hash_t, ptr->len);
   dhashs = g_new0 (hash_t, ptr->len);
   sizes = g_new0 (goffset, ptr->len);
+  digests = g_new0 (gchar *, ptr->len);
 
   step->found = FALSE;
   step->total = ptr->len;
@@ -114,6 +115,7 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
       file = g_ptr_array_index (ptr, i);
       image_file_hashes (file, phashs + i, dhashs + i);
       sizes[i] = g_stat (file, st) == 0 ? st->st_size : -1;
+      digests[i] = file_digest (file);
       step->now = i;
       cb (step, arg);
     }
@@ -124,9 +126,8 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
     {
       for (j = i + 1; j < ptr->len; ++j)
         {
-          same = sizes[i] >= 0 && sizes[i] == sizes[j]
-                 && same_file_content (g_ptr_array_index (ptr, i),
-                                       g_ptr_array_index (ptr, j));
+          same = sizes[i] >= 0 && sizes[i] == sizes[j] && digests[i]
+                 && digests[j] && strcmp (digests[i], digests[j]) == 0;
           if (!same)
             {
               same = hash_cmp (phashs[i], phashs[j])
@@ -153,6 +154,11 @@ find_images (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   g_free (phashs);
   g_free (dhashs);
   g_free (sizes);
+  for (i = 0; i < ptr->len; ++i)
+    {
+      g_free (digests[i]);
+    }
+  g_free (digests);
 
   return count;
 }
@@ -161,9 +167,13 @@ static gboolean
 length_ratio_ok (float a, float b)
 {
   float blen, llen;
+  int rate;
   static int rates[] = { 0, 1, 2, 10, 20, 100 };
 
-  if (g_ini->filter_time_rate == 0)
+  rate = g_ini->filter_time_rate;
+  if (rate >= (int)G_N_ELEMENTS (rates))
+    rate = G_N_ELEMENTS (rates) - 1;
+  if (rate <= 0)
     {
       return TRUE;
     }
@@ -176,21 +186,38 @@ length_ratio_ok (float a, float b)
       blen = b;
     }
 
-  return llen * (float)(rates[g_ini->filter_time_rate] + 1) >= blen;
+  return llen * (float)(rates[rate] + 1) >= blen;
+}
+
+static gboolean
+same_samples (const hash_t *a, const hash_t *b)
+{
+  int k, same;
+
+  same = 0;
+  for (k = 0; k < FDUPVES_VIDEO_SAMPLES; ++k)
+    {
+      if (hash_cmp (a[k], b[k]) < g_ini->same_video_distance)
+        {
+          ++same;
+        }
+    }
+
+  return same * 2 > FDUPVES_VIDEO_SAMPLES;
 }
 
 int
 find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 {
   gsize i, j;
-  int k, same, count;
+  int count;
   struct st_find find[1];
   struct st_file *afile, *bfile;
   find_step step[1];
   gui_t *gui = (gui_t *)arg;
 
   count = 0;
-  find->ptr[0] = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
+  find->ptr = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
   step->found = FALSE;
   step->total = ptr->len;
   step->now = 0;
@@ -200,7 +227,7 @@ find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
                                          g_ini->threads_count, FALSE, NULL);
   if (find->thread_pool == NULL)
     {
-      g_ptr_array_free (find->ptr[0], TRUE);
+      g_ptr_array_free (find->ptr, TRUE);
       return 0;
     }
 
@@ -214,52 +241,51 @@ find_videos (GPtrArray *ptr, find_step_cb cb, gpointer arg)
 
   if (gui->quit)
     {
-      g_ptr_array_free (find->ptr[0], TRUE);
+      g_ptr_array_free (find->ptr, TRUE);
       return 0;
     }
 
   step->doing = _ ("Compare video screenshot hash value");
-  for (i = 0; i + 1 < find->ptr[0]->len; ++i)
+  for (i = 0; i + 1 < find->ptr->len; ++i)
     {
-      afile = g_ptr_array_index (find->ptr[0], i);
+      afile = g_ptr_array_index (find->ptr, i);
 
-      for (j = i + 1; j < find->ptr[0]->len; ++j)
+      for (j = i + 1; j < find->ptr->len; ++j)
         {
-          bfile = g_ptr_array_index (find->ptr[0], j);
+          bfile = g_ptr_array_index (find->ptr, j);
 
           if (!length_ratio_ok (afile->length, bfile->length))
             {
               continue;
             }
 
-          same = 0;
-          for (k = 0; k < FDUPVES_VIDEO_SAMPLES; ++k)
+          if (same_samples (afile->head, bfile->head))
             {
-              if (hash_cmp (afile->hashes[k], bfile->hashes[k])
-                  < g_ini->same_video_distance)
-                {
-                  ++same;
-                }
+              step->type = FD_SAME_VIDEO_HEAD;
+            }
+          else if (same_samples (afile->tail, bfile->tail))
+            {
+              step->type = FD_SAME_VIDEO_TAIL;
+            }
+          else
+            {
+              continue;
             }
 
-          if (same * 2 > FDUPVES_VIDEO_SAMPLES)
-            {
-              step->found = TRUE;
-              step->afile = afile->path;
-              step->bfile = bfile->path;
-              step->type = FD_SAME_VIDEO_HEAD;
-              cb (step, arg);
-              ++count;
-            }
+          step->found = TRUE;
+          step->afile = afile->path;
+          step->bfile = bfile->path;
+          cb (step, arg);
+          ++count;
         }
 
       step->found = FALSE;
-      step->total = find->ptr[0]->len;
+      step->total = find->ptr->len;
       step->now = i;
       cb (step, arg);
     }
 
-  g_ptr_array_free (find->ptr[0], TRUE);
+  g_ptr_array_free (find->ptr, TRUE);
 
   return count;
 }
@@ -298,7 +324,7 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
   gui_t *gui = (gui_t *)arg;
 
   count = 0;
-  find->ptr[0] = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
+  find->ptr = g_ptr_array_new_with_free_func ((GFreeFunc)st_file_free);
   step->found = FALSE;
   step->total = ptr->len;
   step->now = 0;
@@ -308,7 +334,7 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
                                          g_ini->threads_count, FALSE, NULL);
   if (find->thread_pool == NULL)
     {
-      g_ptr_array_free (find->ptr[0], TRUE);
+      g_ptr_array_free (find->ptr, TRUE);
       return -1;
     }
 
@@ -324,18 +350,18 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
     return 0;
 
   step->doing = _ ("Compare audio hash value");
-  for (i = 0; i + 1 < find->ptr[0]->len; ++i)
+  for (i = 0; i + 1 < find->ptr->len; ++i)
     {
-      afile = g_ptr_array_index (find->ptr[0], i);
+      afile = g_ptr_array_index (find->ptr, i);
 
       if (afile->hashArray == NULL || hash_array_size (afile->hashArray) == 0)
         {
           continue;
         }
 
-      for (j = i + 1; j < find->ptr[0]->len; ++j)
+      for (j = i + 1; j < find->ptr->len; ++j)
         {
-          bfile = g_ptr_array_index (find->ptr[0], j);
+          bfile = g_ptr_array_index (find->ptr, j);
 
           if (bfile->hashArray == NULL
               || hash_array_size (bfile->hashArray) == 0)
@@ -375,12 +401,12 @@ find_audios (GPtrArray *ptr, find_step_cb cb, gpointer arg)
         }
 
       step->found = FALSE;
-      step->total = find->ptr[0]->len;
+      step->total = find->ptr->len;
       step->now = i;
       cb (step, arg);
     }
 
-  g_ptr_array_free (find->ptr[0], TRUE);
+  g_ptr_array_free (find->ptr, TRUE);
 
   return count;
 }
@@ -447,24 +473,15 @@ st_file_free (struct st_file *file)
 static void
 find_video_prepare (const gchar *file, struct st_find *find)
 {
-  int length;
   struct st_file *stv;
-
-  length = video_get_length (file);
-  if (length <= 0)
-    {
-      g_warning ("Can't get duration of %s", file);
-      return;
-    }
 
   stv = g_malloc0 (sizeof (struct st_file));
 
   stv->path = file;
-  stv->length = length;
 
   g_thread_pool_push (find->thread_pool, stv, NULL);
 
-  g_ptr_array_add (find->ptr[0], stv);
+  g_ptr_array_add (find->ptr, stv);
 
   ++find->step->now;
   find->cb (find->step, find->arg);
@@ -491,7 +508,7 @@ find_audio_prepare (const gchar *file, struct st_find *find)
 
   g_thread_pool_push (find->thread_pool, stv, NULL);
 
-  g_ptr_array_add (find->ptr[0], stv);
+  g_ptr_array_add (find->ptr, stv);
 
   ++find->step->now;
   find->cb (find->step, find->arg);
@@ -500,12 +517,11 @@ find_audio_prepare (const gchar *file, struct st_find *find)
 static int
 video_hash_func (struct st_file *file)
 {
-  int k;
-
-  for (k = 0; k < FDUPVES_VIDEO_SAMPLES; ++k)
+  file->length = video_phashes (file->path, file->head, file->tail,
+                                FDUPVES_VIDEO_SAMPLES);
+  if (file->length <= 0)
     {
-      file->hashes[k] = video_time_phash (
-          file->path, file->length * (k + 0.5f) / FDUPVES_VIDEO_SAMPLES);
+      g_warning ("Can't get duration of %s", file->path);
     }
   return 0;
 }

@@ -36,32 +36,68 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 
-const char *hash_phrase[] = {
-  "image_hash",
-  "image_phash",
-  "audio_hash",
-  "image_dhash",
-};
-
-static hash_t pixbuf_hash (GdkPixbuf *);
-
 static hash_t pixbuf_dhash (GdkPixbuf *);
 
 #define FDUPVES_HASH_LEN 8
 
 int
+hash_cache_alg (int alg)
+{
+  return alg + g_ini->compare_area * 0x100;
+}
+
+GdkPixbuf *
+pixbuf_compare_area (GdkPixbuf *pixbuf)
+{
+  int w, h;
+  GdkPixbuf *sub, *area;
+
+  if (g_ini->compare_area < FD_COMPARE_TOP
+      || g_ini->compare_area > FD_COMPARE_RIGHT)
+    {
+      return g_object_ref (pixbuf);
+    }
+
+  w = gdk_pixbuf_get_width (pixbuf);
+  h = gdk_pixbuf_get_height (pixbuf);
+  switch (g_ini->compare_area)
+    {
+    case FD_COMPARE_TOP:
+      sub = gdk_pixbuf_new_subpixbuf (pixbuf, 0, 0, w, h / 2);
+      break;
+
+    case FD_COMPARE_BOTTOM:
+      sub = gdk_pixbuf_new_subpixbuf (pixbuf, 0, h / 2, w, h - h / 2);
+      break;
+
+    case FD_COMPARE_LEFT:
+      sub = gdk_pixbuf_new_subpixbuf (pixbuf, 0, 0, w / 2, h);
+      break;
+
+    default:
+      sub = gdk_pixbuf_new_subpixbuf (pixbuf, w / 2, 0, w - w / 2, h);
+      break;
+    }
+
+  area = gdk_pixbuf_scale_simple (sub, w, h, GDK_INTERP_BILINEAR);
+  g_object_unref (sub);
+
+  return area;
+}
+
+int
 image_file_hashes (const char *file, hash_t *phash, hash_t *dhash)
 {
-  GdkPixbuf *buf, *orig, *small;
+  GdkPixbuf *buf, *orig, *area, *small;
   GError *err;
 
-  if (g_cache)
+  if (g_cache
+      && cache_get (g_cache, file, 0, hash_cache_alg (FDUPVES_IMAGE_PHASH),
+                    phash)
+      && cache_get (g_cache, file, 0, hash_cache_alg (FDUPVES_IMAGE_DHASH),
+                    dhash))
     {
-      if (cache_get (g_cache, file, 0, FDUPVES_IMAGE_PHASH, phash)
-          && cache_get (g_cache, file, 0, FDUPVES_IMAGE_DHASH, dhash))
-        {
-          return 0;
-        }
+      return 0;
     }
 
   *phash = 0;
@@ -78,138 +114,31 @@ image_file_hashes (const char *file, hash_t *phash, hash_t *dhash)
 
   buf = gdk_pixbuf_apply_embedded_orientation (orig);
   g_object_unref (orig);
+  area = pixbuf_compare_area (buf);
+  g_object_unref (buf);
 
-  small = gdk_pixbuf_scale_simple (buf, FDUPVES_HASH_LEN + 1, FDUPVES_HASH_LEN,
-                                   GDK_INTERP_BILINEAR);
-  *phash = pixbuf_phash (buf);
+  small = gdk_pixbuf_scale_simple (area, FDUPVES_HASH_LEN + 1,
+                                   FDUPVES_HASH_LEN, GDK_INTERP_BILINEAR);
+  *phash = pixbuf_phash (area);
   *dhash = pixbuf_dhash (small);
   g_object_unref (small);
-  g_object_unref (buf);
+  g_object_unref (area);
 
   if (g_cache)
     {
-      if (*phash && *dhash)
+      if (*phash)
         {
-          cache_set (g_cache, file, 0, FDUPVES_IMAGE_PHASH, *phash);
-          cache_set (g_cache, file, 0, FDUPVES_IMAGE_DHASH, *dhash);
+          cache_set (g_cache, file, 0, hash_cache_alg (FDUPVES_IMAGE_PHASH),
+                     *phash);
+        }
+      if (*dhash)
+        {
+          cache_set (g_cache, file, 0, hash_cache_alg (FDUPVES_IMAGE_DHASH),
+                     *dhash);
         }
     }
 
   return 0;
-}
-
-hash_t
-image_file_hash (const char *file)
-{
-  GdkPixbuf *buf;
-  hash_t h;
-  GError *err;
-
-  if (g_cache)
-    {
-      if (cache_get (g_cache, file, 0, FDUPVES_IMAGE_HASH, &h))
-        {
-          return h;
-        }
-    }
-
-  buf = fdupves_gdkpixbuf_load_file_at_size (file, FDUPVES_HASH_LEN,
-                                             FDUPVES_HASH_LEN, &err);
-  if (err)
-    {
-      g_warning ("Load file: %s to pixbuf failed: %s", file, err->message);
-      g_error_free (err);
-      return 0;
-    }
-
-  h = pixbuf_hash (buf);
-  g_object_unref (buf);
-
-  if (g_cache)
-    {
-      if (h)
-        {
-          cache_set (g_cache, file, 0, FDUPVES_IMAGE_HASH, h);
-        }
-    }
-
-  return h;
-}
-
-hash_t
-image_buffer_hash (const char *buffer, int size)
-{
-  GdkPixbuf *buf;
-  GError *err;
-  hash_t h;
-
-  err = NULL;
-  buf = gdk_pixbuf_new_from_data ((const guchar *)buffer, GDK_COLORSPACE_RGB,
-                                  FALSE, 8, FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
-                                  FDUPVES_HASH_LEN * 3, NULL, &err);
-  if (err)
-    {
-      g_warning ("Load inline data to pixbuf failed: %s", err->message);
-      g_error_free (err);
-      return 0;
-    }
-
-  h = pixbuf_hash (buf);
-  g_object_unref (buf);
-
-  return h;
-}
-
-static hash_t
-pixbuf_hash (GdkPixbuf *pixbuf)
-{
-  int width, height, rowstride, n_channels;
-  guchar *pixels, *p;
-  int *grays, sum, avg, x, y, off;
-  hash_t hash;
-
-  n_channels = gdk_pixbuf_get_n_channels (pixbuf);
-
-  g_assert (gdk_pixbuf_get_colorspace (pixbuf) == GDK_COLORSPACE_RGB);
-  g_assert (gdk_pixbuf_get_bits_per_sample (pixbuf) == 8);
-
-  width = gdk_pixbuf_get_width (pixbuf);
-  height = gdk_pixbuf_get_height (pixbuf);
-
-  rowstride = gdk_pixbuf_get_rowstride (pixbuf);
-  pixels = gdk_pixbuf_get_pixels (pixbuf);
-
-  grays = g_new0 (int, width *height);
-  off = 0;
-  for (y = 0; y < height; ++y)
-    {
-      for (x = 0; x < width; ++x)
-        {
-          p = pixels + y * rowstride + x * n_channels;
-          grays[off] = (p[0] * 30 + p[1] * 59 + p[2] * 11) / 100;
-          ++off;
-        }
-    }
-
-  sum = 0;
-  for (x = 0; x < off; ++x)
-    {
-      sum += grays[x];
-    }
-  avg = sum / off;
-
-  hash = 0;
-  for (x = 0; x < off; ++x)
-    {
-      if (grays[x] >= avg)
-        {
-          hash |= ((hash_t)1 << x);
-        }
-    }
-
-  g_free (grays);
-
-  return hash;
 }
 
 static hash_t
@@ -258,33 +187,7 @@ hash_cmp (hash_t a, hash_t b)
       return FDUPVES_HASH_LEN * FDUPVES_HASH_LEN; /* max invalid distance */
     }
 
-  if (a == ~0ULL || b == ~0ULL)
-    {
-      return FDUPVES_HASH_LEN * FDUPVES_HASH_LEN;
-    }
-
   c = a ^ b;
-  switch (g_ini->compare_area)
-    {
-    case FD_COMPARE_TOP:
-      c = c & 0x00000000FFFFFFFFULL;
-      break;
-
-    case FD_COMPARE_BOTTOM:
-      c = c & 0xFFFFFFFF00000000ULL;
-      break;
-
-    case FD_COMPARE_LEFT:
-      c = c & 0x0F0F0F0F0F0F0F0FULL;
-      break;
-
-    case FD_COMPARE_RIGHT:
-      c = c & 0xF0F0F0F0F0F0F0F0ULL;
-      break;
-
-    default:
-      break;
-    }
   for (cmp = 0; c; c = c >> 1)
     {
       if (c & 1)
@@ -294,47 +197,6 @@ hash_cmp (hash_t a, hash_t b)
     }
 
   return cmp;
-}
-
-hash_t
-video_time_hash (const char *file, float offset)
-{
-  hash_t h;
-  gchar *buffer;
-  gsize len;
-
-  if (g_cache)
-    {
-      if (cache_get (g_cache, file, offset, FDUPVES_IMAGE_HASH, &h))
-        {
-          return h;
-        }
-    }
-
-  len = FDUPVES_HASH_LEN * FDUPVES_HASH_LEN * 3;
-  buffer = g_malloc (len);
-  g_return_val_if_fail (buffer, 0);
-
-  if (video_time_screenshot (file, offset, FDUPVES_HASH_LEN, FDUPVES_HASH_LEN,
-                             buffer, len)
-      < 0)
-    {
-      g_free (buffer);
-      return 0;
-    }
-
-  h = image_buffer_hash (buffer, len);
-  g_free (buffer);
-
-  if (g_cache)
-    {
-      if (h)
-        {
-          cache_set (g_cache, file, offset, FDUPVES_IMAGE_HASH, h);
-        }
-    }
-
-  return h;
 }
 
 hash_array_t *

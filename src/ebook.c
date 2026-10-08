@@ -26,6 +26,7 @@
 
 #include "ebook.h"
 #include "cache.h"
+#include "ini.h"
 
 #include <string.h>
 
@@ -169,63 +170,93 @@ text_simhash (const char *text, gsize len)
   return h;
 }
 
-static gchar *
-ebook_normalize_isbn (const char *isbn)
+static void
+ebook_normalize_isbn (const char *isbn, char *out, gsize size)
 {
   GString *s = g_string_new (NULL);
+  gsize digits;
 
   for (; *isbn; ++isbn)
     if (g_ascii_isdigit (*isbn) || g_ascii_toupper (*isbn) == 'X')
       g_string_append_c (s, g_ascii_toupper (*isbn));
 
-  return g_string_free (s, FALSE);
+  digits = strspn (s->str, "0123456789");
+  if (!(s->len == 13 && digits == 13) && !(s->len == 10 && digits >= 9))
+    g_string_truncate (s, 0);
+
+  g_strlcpy (out, s->str, size);
+  g_string_free (s, TRUE);
 }
 
-static gchar *
-ebook_normalize_text (const char *text)
+static void
+ebook_normalize_text (const char *text, char *out, gsize size)
 {
-  gchar *fold, **words, *ret;
+  gchar *fold;
+  const gchar *p;
+  gunichar c;
+  GString *s;
+  gboolean space;
 
   fold = g_utf8_casefold (text, -1);
-  words = g_regex_split_simple ("\\s+", g_strstrip (fold), 0, 0);
-  ret = g_strjoinv (" ", words);
-  g_strfreev (words);
+  s = g_string_new (NULL);
+  space = FALSE;
+  for (p = fold; *p; p = g_utf8_next_char (p))
+    {
+      c = g_utf8_get_char (p);
+      if (g_unichar_isspace (c))
+        {
+          space = s->len > 0;
+          continue;
+        }
+      if (space)
+        g_string_append_c (s, ' ');
+      space = FALSE;
+      g_string_append_unichar (s, c);
+    }
   g_free (fold);
 
-  return ret;
+  g_strlcpy (out, s->str, size);
+  g_string_free (s, TRUE);
+}
+
+static void
+ebook_normalize (ebook_hash_t *h)
+{
+  if (h->normalized)
+    return;
+
+  ebook_normalize_isbn (h->isbn, h->norm_isbn, sizeof h->norm_isbn);
+  ebook_normalize_text (h->title, h->norm_title, sizeof h->norm_title);
+  ebook_normalize_text (h->author, h->norm_author, sizeof h->norm_author);
+  h->normalized = TRUE;
 }
 
 static gboolean
 ebook_text_equal (const char *a, const char *b)
 {
-  gchar *na, *nb;
-  gboolean ret;
-
-  na = ebook_normalize_text (a);
-  nb = ebook_normalize_text (b);
-  ret = *na != '\0' && strcmp (na, nb) == 0;
-  g_free (na);
-  g_free (nb);
-
-  return ret;
+  return *a != '\0' && strcmp (a, b) == 0;
 }
 
 int
 ebook_hash_cmp (ebook_hash_t *ha, ebook_hash_t *hb)
 {
-  gchar *ia, *ib;
-  gboolean same;
+  gboolean text_same, cover_same;
 
-  ia = ebook_normalize_isbn (ha->isbn);
-  ib = ebook_normalize_isbn (hb->isbn);
-  same = *ia != '\0' && strcmp (ia, ib) == 0;
-  g_free (ia);
-  g_free (ib);
-  if (same)
+  ebook_normalize (ha);
+  ebook_normalize (hb);
+
+  if (ebook_text_equal (ha->norm_isbn, hb->norm_isbn))
     return 0;
 
-  if (ebook_text_equal (ha->title, hb->title)
-      && ebook_text_equal (ha->author, hb->author))
+  text_same = ha->text_hash && hb->text_hash
+              && hash_cmp (ha->text_hash, hb->text_hash)
+                     < g_ini->same_image_distance;
+  cover_same = ha->cover_hash && hb->cover_hash
+               && hash_cmp (ha->cover_hash, hb->cover_hash)
+                      < g_ini->same_image_distance;
+  if ((text_same || cover_same)
+      && ebook_text_equal (ha->norm_title, hb->norm_title)
+      && ebook_text_equal (ha->norm_author, hb->norm_author))
     return 0;
 
   if (ha->text_hash && hb->text_hash)
