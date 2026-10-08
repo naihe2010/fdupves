@@ -113,6 +113,9 @@ ELSE ()
 ENDIF ()
 
 ADD_EXECUTABLE(sqlite3 sqlite3/sqlite3.h sqlite3/sqlite3.c sqlite3/shell.c)
+IF (NOT WIN32)
+  TARGET_LINK_LIBRARIES(sqlite3 m)
+ENDIF (NOT WIN32)
 
 INSTALL(DIRECTORY icons
   DESTINATION share/fdupves)
