@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
 PROJECT(fdupves C CXX)
 
@@ -142,7 +142,7 @@ IF (UNIX)
   ENDIF (EXISTS /etc/debian_version)
   IF (EXISTS /etc/redhat-release)
     SET(CPACK_GENERATOR RPM)
-    SET(CPACK_RPM_PACKAGE_REQUIRES "gtk2 >= 2.10.4 ffmpeg")
+    SET(CPACK_RPM_PACKAGE_REQUIRES "gtk3 >= 3.22 ffmpeg mupdf-libs")
   ENDIF (EXISTS /etc/redhat-release)
 
   SET(CPACK_SOURCE_PACKAGE_FILE_NAME
