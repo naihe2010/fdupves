@@ -54,6 +54,20 @@ typedef struct
   gboolean show;
 } same_node;
 
+enum
+{
+  RESULT_PATH,
+  RESULT_IMAGE_SIZE,
+  RESULT_FILE_SIZE,
+  RESULT_LENGTH,
+  RESULT_FORMAT,
+  RESULT_FILE_NODE,
+  RESULT_IMAGE_PIXELS,
+  RESULT_FILE_BYTES,
+  RESULT_SECONDS,
+  RESULT_COLUMN_COUNT
+};
+
 void same_node_free (same_node *);
 
 void same_list_free (GSList *);
@@ -77,7 +91,7 @@ struct file_node_s
   gchar *format;
 
   /* file size */
-  gint size;
+  goffset size;
 
   /* image/screenshot size */
   gint width, height;
@@ -650,6 +664,7 @@ res_tree_new (gui_t *gui)
   GtkWidget *combo, *entry;
   GtkCellRenderer *renderer;
   GtkTreeViewColumn *column;
+  GtkTreeModel *model;
 
   win = gtk_frame_new (_ ("Result"));
 
@@ -697,41 +712,58 @@ res_tree_new (gui_t *gui)
   gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scrwin),
                                        GTK_SHADOW_IN);
   gui->result_store
-      = gtk_tree_store_new (6, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
-                            G_TYPE_STRING, G_TYPE_STRING, G_TYPE_POINTER);
-  gui->result_tree
-      = gtk_tree_view_new_with_model (GTK_TREE_MODEL (gui->result_store));
+      = gtk_tree_store_new (RESULT_COLUMN_COUNT, G_TYPE_STRING, G_TYPE_STRING,
+                            G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
+                            G_TYPE_POINTER, G_TYPE_INT64, G_TYPE_INT64,
+                            G_TYPE_DOUBLE);
+  model = gtk_tree_model_sort_new_with_model (
+      GTK_TREE_MODEL (gui->result_store));
+  gtk_tree_sortable_set_sort_column_id (
+      GTK_TREE_SORTABLE (model), GTK_TREE_SORTABLE_UNSORTED_SORT_COLUMN_ID,
+      GTK_SORT_ASCENDING);
+  gtk_tree_sortable_set_default_sort_func (GTK_TREE_SORTABLE (model), NULL,
+                                          NULL, NULL);
+  gui->result_tree = gtk_tree_view_new_with_model (model);
+  g_object_unref (model);
   gtk_container_add (GTK_CONTAINER (scrwin), gui->result_tree);
 
   /* path */
   renderer = gtk_cell_renderer_text_new ();
   column = gtk_tree_view_column_new_with_attributes (_ ("File Path"), renderer,
-                                                     "text", 0, NULL);
+                                                     "text", RESULT_PATH,
+                                                     NULL);
   gtk_tree_view_column_set_resizable (column, TRUE);
+  gtk_tree_view_column_set_sort_column_id (column, RESULT_PATH);
   gtk_tree_view_append_column (GTK_TREE_VIEW (gui->result_tree), column);
   /* image size */
   renderer = gtk_cell_renderer_text_new ();
   column = gtk_tree_view_column_new_with_attributes (
-      _ ("Image Size"), renderer, "text", 1, NULL);
+      _ ("Image Size"), renderer, "text", RESULT_IMAGE_SIZE, NULL);
   gtk_tree_view_column_set_resizable (column, TRUE);
+  gtk_tree_view_column_set_sort_column_id (column, RESULT_IMAGE_PIXELS);
   gtk_tree_view_append_column (GTK_TREE_VIEW (gui->result_tree), column);
   /* file size */
   renderer = gtk_cell_renderer_text_new ();
   column = gtk_tree_view_column_new_with_attributes (_ ("File Size"), renderer,
-                                                     "text", 2, NULL);
+                                                     "text", RESULT_FILE_SIZE,
+                                                     NULL);
   gtk_tree_view_column_set_resizable (column, TRUE);
+  gtk_tree_view_column_set_sort_column_id (column, RESULT_FILE_BYTES);
   gtk_tree_view_append_column (GTK_TREE_VIEW (gui->result_tree), column);
   /* video length */
   renderer = gtk_cell_renderer_text_new ();
   column = gtk_tree_view_column_new_with_attributes (
-      _ ("Video Length"), renderer, "text", 3, NULL);
+      _ ("Video Length"), renderer, "text", RESULT_LENGTH, NULL);
   gtk_tree_view_column_set_resizable (column, TRUE);
+  gtk_tree_view_column_set_sort_column_id (column, RESULT_SECONDS);
   gtk_tree_view_append_column (GTK_TREE_VIEW (gui->result_tree), column);
   /* format */
   renderer = gtk_cell_renderer_text_new ();
   column = gtk_tree_view_column_new_with_attributes (_ ("Format"), renderer,
-                                                     "text", 4, NULL);
+                                                     "text", RESULT_FORMAT,
+                                                     NULL);
   gtk_tree_view_column_set_resizable (column, TRUE);
+  gtk_tree_view_column_set_sort_column_id (column, RESULT_FORMAT);
   gtk_tree_view_append_column (GTK_TREE_VIEW (gui->result_tree), column);
 
   gtk_widget_add_events (GTK_WIDGET (gui->result_tree), GDK_BUTTON_PRESS_MASK);
@@ -1541,7 +1573,8 @@ resultsel_onchanged (GtkTreeSelection *sel, gui_t *gui)
 {
   GList *list, *cur;
   gsize i, cnt;
-  GtkTreeIter *itr;
+  GtkTreeIter *itr, sorted_iter;
+  GtkTreeModel *model;
 
   if (gui->result_file_nodes)
     {
@@ -1554,7 +1587,7 @@ resultsel_onchanged (GtkTreeSelection *sel, gui_t *gui)
       gui->result_select_iters = NULL;
     }
 
-  list = gtk_tree_selection_get_selected_rows (sel, NULL);
+  list = gtk_tree_selection_get_selected_rows (sel, &model);
   cnt = g_list_length (list);
   if (cnt < 1)
     {
@@ -1567,9 +1600,10 @@ resultsel_onchanged (GtkTreeSelection *sel, gui_t *gui)
   for (i = 0, cur = list; cur; ++i, cur = g_list_next (cur))
     {
       itr = gui->result_select_iters + i;
-      gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
-                               cur->data);
-      gtk_tree_model_get (GTK_TREE_MODEL (gui->result_store), itr, 5,
+      gtk_tree_model_get_iter (model, &sorted_iter, cur->data);
+      gtk_tree_model_sort_convert_iter_to_child_iter (
+          GTK_TREE_MODEL_SORT (model), itr, &sorted_iter);
+      gtk_tree_model_get (model, &sorted_iter, RESULT_FILE_NODE,
                           gui->result_file_nodes + i, -1);
       gtk_tree_path_free (cur->data);
     }
@@ -1935,11 +1969,12 @@ result_delete (GtkMenuItem *item, gui_t *gui)
   GSList *deleted = NULL, *nodes = NULL, *cur, *n;
   GList *list, *row;
   GtkTreeIter itr[1];
+  GtkTreeModel *model;
   GtkWidget *dia;
   same_node *node;
   gboolean dup;
 
-  list = gtk_tree_selection_get_selected_rows (gui->result_select, NULL);
+  list = gtk_tree_selection_get_selected_rows (gui->result_select, &model);
   last = g_list_length (list);
   if (last == 0)
     {
@@ -1949,10 +1984,8 @@ result_delete (GtkMenuItem *item, gui_t *gui)
   files = g_new (file_node *, last);
   for (i = 0, row = list; row; ++i, row = row->next)
     {
-      gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
-                               row->data);
-      gtk_tree_model_get (GTK_TREE_MODEL (gui->result_store), itr, 5,
-                          files + i, -1);
+      gtk_tree_model_get_iter (model, itr, row->data);
+      gtk_tree_model_get (model, itr, RESULT_FILE_NODE, files + i, -1);
       gtk_tree_path_free (row->data);
     }
   g_list_free (list);
@@ -2739,12 +2772,38 @@ file_node_to_tree_iter (file_node *fn, GtkTreeStore *store, GtkTreeIter *itr)
 #if GLIB_CHECK_VERSION(2, 30, 0)
   fsizestr = g_format_size (fn->size);
 #else
-  fsizestr = g_strdup_printf ("%d", fn->size);
+  fsizestr = g_strdup_printf ("%" G_GOFFSET_FORMAT, fn->size);
 #endif
 
-  gtk_tree_store_set (store, itr, 0, fn->path, 1, isizestr, 2, fsizestr, 3,
-                      vlenstr, 4, fn->format, 5, fn, -1);
+  gtk_tree_store_set (
+      store, itr, RESULT_PATH, fn->path, RESULT_IMAGE_SIZE, isizestr,
+      RESULT_FILE_SIZE, fsizestr, RESULT_LENGTH, vlenstr, RESULT_FORMAT,
+      fn->format, RESULT_FILE_NODE, fn, RESULT_IMAGE_PIXELS,
+      (gint64)fn->width * fn->height, RESULT_FILE_BYTES, (gint64)fn->size,
+      RESULT_SECONDS, fn->length, -1);
   g_free (fsizestr);
+}
+
+static GtkTreePath *
+result_rowref_path (gui_t *gui, GtkTreeRowReference *ref, gint id)
+{
+  GtkTreePath *path, *sorted_path;
+  GtkTreeModel *model;
+
+  path = gtk_tree_row_reference_get_path (ref);
+  if (id > 0)
+    {
+      gtk_tree_path_down (path);
+      while (--id)
+        {
+          gtk_tree_path_next (path);
+        }
+    }
+  model = gtk_tree_view_get_model (GTK_TREE_VIEW (gui->result_tree));
+  sorted_path = gtk_tree_model_sort_convert_child_path_to_path (
+      GTK_TREE_MODEL_SORT (model), path);
+  gtk_tree_path_free (path);
+  return sorted_path;
 }
 
 static void
@@ -2752,16 +2811,9 @@ result_select_rowref_id (gui_t *gui, GtkTreeRowReference *ref, gint id)
 {
   GtkTreePath *path;
 
-  path = gtk_tree_row_reference_get_path (ref);
-  if (id > 0)
-    {
-      gtk_tree_path_down (path);
-      while (--id)
-        {
-          gtk_tree_path_next (path);
-        }
-    }
+  path = result_rowref_path (gui, ref, id);
   gtk_tree_selection_select_path (gui->result_select, path);
+  gtk_tree_path_free (path);
 }
 
 static void
@@ -2769,16 +2821,9 @@ result_unselect_rowref_id (gui_t *gui, GtkTreeRowReference *ref, gint id)
 {
   GtkTreePath *path;
 
-  path = gtk_tree_row_reference_get_path (ref);
-  if (id > 0)
-    {
-      gtk_tree_path_down (path);
-      while (--id)
-        {
-          gtk_tree_path_next (path);
-        }
-    }
+  path = result_rowref_path (gui, ref, id);
   gtk_tree_selection_unselect_path (gui->result_select, path);
+  gtk_tree_path_free (path);
 }
 
 static void
