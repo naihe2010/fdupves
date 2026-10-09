@@ -52,6 +52,7 @@ typedef struct
   GSList *files;
   GtkTreeRowReference *treerowref;
   gboolean show;
+  gboolean expanded;
 } same_node;
 
 enum
@@ -235,6 +236,8 @@ static void result_onactivated (GtkTreeView *, GtkTreePath *,
                                 GtkTreeViewColumn *, gui_t *);
 
 static void resultsel_onchanged (GtkTreeSelection *, gui_t *);
+
+static GtkTreePath *result_rowref_path (gui_t *, GtkTreeRowReference *, gint);
 
 static GtkWidget *result_open_menuitem (gui_t *);
 
@@ -1782,31 +1785,41 @@ static void
 gui_filter_result (gui_t *gui, const gchar *filter)
 {
   GtkTreeIter itr[1];
+  GtkTreeView *tree;
   gint index;
   GtkTreePath *path;
   GSList *nodelist;
   same_node *node;
 
+  tree = GTK_TREE_VIEW (gui->result_tree);
   for (index = 0, nodelist = gui->same_list; nodelist != NULL;
        nodelist = g_slist_next (nodelist))
     {
       node = (same_node *)nodelist->data;
 
-      if (node->treerowref)
+      if (!same_node_matches_filter (node, filter))
         {
-          gtk_tree_row_reference_free (node->treerowref);
-          node->treerowref = NULL;
-        }
-      node->show = FALSE;
+          if (node->show)
+            {
+              path = result_rowref_path (gui, node->treerowref, 0);
+              node->expanded = gtk_tree_view_row_expanded (tree, path);
+              gtk_tree_path_free (path);
 
-      if (node->files == NULL)
-        {
+              path = gtk_tree_row_reference_get_path (node->treerowref);
+              gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store),
+                                       itr, path);
+              gtk_tree_path_free (path);
+              gtk_tree_store_remove (gui->result_store, itr);
+              gtk_tree_row_reference_free (node->treerowref);
+              node->treerowref = NULL;
+              node->show = FALSE;
+            }
           continue;
         }
 
-      if (same_node_matches_filter (node, filter))
+      if (!node->show)
         {
-          gui_tree_store_get_iter (gui->result_store, itr, NULL, index++);
+          gtk_tree_store_insert (gui->result_store, itr, NULL, index);
           same_node_to_tree_rows (gui->result_store, node, itr);
 
           path = gtk_tree_model_get_path (GTK_TREE_MODEL (gui->result_store),
@@ -1816,10 +1829,16 @@ gui_filter_result (gui_t *gui, const gchar *filter)
           gtk_tree_path_free (path);
 
           node->show = TRUE;
+          if (node->expanded)
+            {
+              path = result_rowref_path (gui, node->treerowref, 0);
+              gtk_tree_view_expand_row (tree, path, FALSE);
+              gtk_tree_path_free (path);
+            }
         }
+      ++index;
     }
 
-  gui_tree_store_iter_set_count (gui->result_store, NULL, index);
   resultsel_onchanged (gui->result_select, gui);
 }
 
