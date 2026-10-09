@@ -301,6 +301,7 @@ gui_init (int argc, char *argv[])
   progressbar_new (gui);
 
   gui->step_queue = g_async_queue_new_full (g_free);
+  g_mutex_init (&gui->same_lock);
   gui->log_queue = g_async_queue_new_full (g_free);
   gui->queue_timer
       = g_timeout_add (500, G_SOURCE_FUNC (gui_queue_timer_callback), gui);
@@ -855,6 +856,7 @@ gui_signal_dispatch (gui_t *gui, int state)
 static void
 gui_find_cb (GtkWidget *wid, gui_t *gui)
 {
+  gtk_widget_set_sensitive (GTK_WIDGET (gui->but_find), FALSE);
   gui_signal_dispatch (gui, FDUPVES_FIND_STARTED);
 }
 
@@ -907,16 +909,24 @@ gui_load_directories (gui_t *gui)
 static guint
 gui_wait_same_count (gui_t *gui)
 {
+  guint len;
+
   // because the find_step struct using const char *area
   while (g_async_queue_length (gui->step_queue) > 0)
     {
       g_usleep (100 * 1000);
     }
 
+  g_mutex_lock (&gui->same_lock);
   if (gui->same_list == NULL)
-    return 0;
+    {
+      g_mutex_unlock (&gui->same_lock);
+      return 0;
+    }
 
-  return g_slist_length (gui->same_list);
+  len = g_slist_length (gui->same_list);
+  g_mutex_unlock (&gui->same_lock);
+  return len;
 }
 
 static int
@@ -996,11 +1006,13 @@ gui_find_started (gui_t *gui)
   gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (gui->progress), 0);
 
   gtk_tree_store_clear (gui->result_store);
+  g_mutex_lock (&gui->same_lock);
   if (gui->same_list)
     {
       same_list_free (gui->same_list);
       gui->same_list = NULL;
     }
+  g_mutex_unlock (&gui->same_lock);
 
   gui->images = g_ptr_array_new_with_free_func (g_free);
   gui->videos = g_ptr_array_new_with_free_func (g_free);
@@ -1568,14 +1580,16 @@ resultsel_onchanged (GtkTreeSelection *sel, gui_t *gui)
 {
   GList *list, *cur;
   gsize i, cnt;
-  GtkTreeIter *itr, sorted_iter;
+  GtkTreeIter *itr;
   GtkTreeModel *model;
+  GtkTreePath *child_path;
 
   if (gui->result_file_nodes)
     {
       g_free (gui->result_file_nodes);
       gui->result_file_nodes = NULL;
     }
+  gui->result_file_count = 0;
   if (gui->result_select_iters)
     {
       g_free (gui->result_select_iters);
@@ -1591,15 +1605,23 @@ resultsel_onchanged (GtkTreeSelection *sel, gui_t *gui)
 
   gui->result_file_nodes = g_new0 (file_node *, cnt);
   gui->result_select_iters = g_new0 (GtkTreeIter, cnt);
+  gui->result_file_count = cnt;
 
   for (i = 0, cur = list; cur; ++i, cur = g_list_next (cur))
     {
       itr = gui->result_select_iters + i;
-      gtk_tree_model_get_iter (model, &sorted_iter, cur->data);
-      gtk_tree_model_sort_convert_iter_to_child_iter (
-          GTK_TREE_MODEL_SORT (model), itr, &sorted_iter);
-      gtk_tree_model_get (model, &sorted_iter, RESULT_FILE_NODE,
-                          gui->result_file_nodes + i, -1);
+      child_path = gtk_tree_model_sort_convert_path_to_child_path (
+          GTK_TREE_MODEL_SORT (model), cur->data);
+      if (child_path
+          && gtk_tree_model_get_iter (GTK_TREE_MODEL (gui->result_store), itr,
+                                      child_path))
+        {
+          gtk_tree_model_get (GTK_TREE_MODEL (gui->result_store), itr,
+                              RESULT_FILE_NODE, gui->result_file_nodes + i,
+                              -1);
+        }
+      if (child_path)
+        gtk_tree_path_free (child_path);
       gtk_tree_path_free (cur->data);
     }
   g_list_free (list);
@@ -1612,6 +1634,8 @@ result_open (GtkMenuItem *item, gui_t *gui)
   gchar *uri;
   GError *err;
 
+  if (gui->result_file_count < 1 || gui->result_file_nodes[0] == NULL)
+    return;
   uri = g_filename_to_uri (gui->result_file_nodes[0]->path, NULL, NULL);
   err = NULL;
   gtk_show_uri_on_window (NULL, uri, GDK_CURRENT_TIME, &err);
@@ -1625,6 +1649,8 @@ result_open (GtkMenuItem *item, gui_t *gui)
 #else
   gchar *filename;
 
+  if (gui->result_file_count < 1 || gui->result_file_nodes[0] == NULL)
+    return;
   filename
       = g_win32_locale_filename_from_utf8 (gui->result_file_nodes[0]->path);
   if (filename)
@@ -1651,6 +1677,8 @@ result_opendir (GtkMenuItem *item, gui_t *gui)
   gchar *dirname;
 #endif
 
+  if (gui->result_file_count < 1 || gui->result_file_nodes[0] == NULL)
+    return;
   dir = g_path_get_dirname (gui->result_file_nodes[0]->path);
   if (dir == NULL)
     {
@@ -2285,6 +2313,9 @@ diff_add_video (diff_dialog *dia, const file_node *afn, const file_node *bfn)
 static void
 result_diff (GtkMenuItem *item, gui_t *gui)
 {
+  if (gui->result_file_count < 2 || gui->result_file_nodes[0] == NULL
+      || gui->result_file_nodes[1] == NULL)
+    return;
   diff_dialog_new (gui, gui->result_file_nodes[0], gui->result_file_nodes[1]);
 }
 
@@ -2432,8 +2463,10 @@ gui_process_step (gui_t *gui, const find_step *step)
 
   if (step->found)
     {
+      g_mutex_lock (&gui->same_lock);
       gui->same_list = gui_append_same_slist (gui, gui->same_list, step->afile,
                                               step->bfile, step->type);
+      g_mutex_unlock (&gui->same_lock);
     }
 }
 

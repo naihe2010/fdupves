@@ -66,6 +66,7 @@ struct gui_s
   GSList *same_audios;
   GSList *same_ebooks;
   GSList *same_list;
+  GMutex same_lock;
 
   GtkWidget *log_tree;
   GtkListStore *log_store;
@@ -76,6 +77,7 @@ struct gui_s
   GtkTreeSelection *result_select;
   GtkTreeIter *result_select_iters;
   file_node **result_file_nodes;
+  gsize result_file_count;
   gdouble scroll_value;
 
   GAsyncQueue *step_queue;

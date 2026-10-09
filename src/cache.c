@@ -113,7 +113,11 @@ cache_open (const gchar *file)
       g_free (dirname);
     }
 
-  if (sqlite3_open (file, &cache->db) != 0)
+  if (sqlite3_open_v2 (file, &cache->db,
+                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+                           | SQLITE_OPEN_FULLMUTEX,
+                       NULL)
+      != SQLITE_OK)
     {
       g_warning ("Open cache file: %s failed:%s.", file, strerror (errno));
       g_hash_table_destroy (cache->verified);

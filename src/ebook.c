@@ -196,8 +196,10 @@ ebook_normalize_text (const char *text, char *out, gsize size)
   gunichar c;
   GString *s;
   gboolean space;
+  const gchar *end;
 
-  fold = g_utf8_casefold (text, -1);
+  g_utf8_validate (text, -1, &end);
+  fold = g_utf8_casefold (text, end - text);
   s = g_string_new (NULL);
   space = FALSE;
   for (p = fold; *p; p = g_utf8_next_char (p))
