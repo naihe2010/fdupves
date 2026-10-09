@@ -718,11 +718,6 @@ res_tree_new (gui_t *gui)
                             G_TYPE_DOUBLE);
   model = gtk_tree_model_sort_new_with_model (
       GTK_TREE_MODEL (gui->result_store));
-  gtk_tree_sortable_set_sort_column_id (
-      GTK_TREE_SORTABLE (model), GTK_TREE_SORTABLE_UNSORTED_SORT_COLUMN_ID,
-      GTK_SORT_ASCENDING);
-  gtk_tree_sortable_set_default_sort_func (GTK_TREE_SORTABLE (model), NULL,
-                                          NULL, NULL);
   gui->result_tree = gtk_tree_view_new_with_model (model);
   g_object_unref (model);
   gtk_container_add (GTK_CONTAINER (scrwin), gui->result_tree);
